@@ -1,3 +1,9 @@
 <resources>
     <string name="app_name">testApp</string>
+    <string name="title">INSTA360 APPLICATION</string>
+    <string name="wifiConnect">WIFI Connect</string>
+    <string name="usbConnect">USB Connect</string>
+    <string name="startLive">Start RTMP Live</string>
+    <string name="title_activity_live">LiveActivity</string>
+
 </resources>

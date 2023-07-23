@@ -3,6 +3,7 @@ pluginManagement {
         google()
         mavenCentral()
         gradlePluginPortal()
+
     }
 }
 dependencyResolutionManagement {
@@ -10,7 +11,16 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven{
+            url 'http://nexus.arashivision.com:9999/repository/maven-public/'
+            allowInsecureProtocol = true
+            credentials {
+                username = 'deployment'
+                password = 'test123'
+            }
+        }
     }
 }
+
 rootProject.name = "testApp"
 include ':app'
