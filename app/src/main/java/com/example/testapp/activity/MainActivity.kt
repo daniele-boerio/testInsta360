@@ -21,6 +21,7 @@ class MainActivity : ObserveCameraActivity() {
         // Init SDK
         InstaCameraSDK.init(this.application)
 
+
         binding.wifiConnect.setOnClickListener {
             InstaCameraManager.getInstance().openCamera(InstaCameraManager.CONNECT_TYPE_WIFI)
         }
@@ -59,5 +60,4 @@ class MainActivity : ObserveCameraActivity() {
             Toast.makeText(this, "SD card disabled", Toast.LENGTH_SHORT).show()
         }
     }
-
 }

@@ -4,6 +4,24 @@
     <string name="wifiConnect">WIFI Connect</string>
     <string name="usbConnect">USB Connect</string>
     <string name="startLive">Start RTMP Live</string>
-    <string name="title_activity_live">LiveActivity</string>
+
+    //live activity
+    <string name="title_activity_live">Live Activity</string>
+    <string name="preview_toolbar_title">Preview — Normal Mode</string>
+    <string name="preview_angle">Preview Type:</string>
+    <string name="preview_mode_normal">Normal</string>
+    <string name="preview_mode_fisheye">Fisheye</string>
+    <string name="preview_mode_perspective">Perspective</string>
+    <string name="preview_mode_plane">Plane</string>
+    <string name="stab_type">Stabilizing Type:</string>
+    <string name="stab_type_auto">Auto Select</string>
+    <string name="stab_type_panorama">For Panorama</string>
+    <string name="stab_type_calibrate_horizon">Align the horizon only</string>
+    <string name="stab_type_footage_motion_smooth">Smooth footage motion, no horizon alignment</string>
+    <string name="stab_type_off">OFF</string>
+    <string name="choose_resolution">Resolution Selection:</string>
+    <string name="button_start">Start</string>
+    <string name="button_stop">Stop</string>
+
 
 </resources>
