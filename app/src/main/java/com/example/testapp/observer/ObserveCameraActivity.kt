@@ -1,4 +1,4 @@
-package com.example.testapp.activity
+package com.example.testapp.observer
 
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
@@ -7,6 +7,8 @@ import com.arashivision.sdkcamera.camera.callback.ICameraChangedCallback
 
 
 abstract class ObserveCameraActivity : AppCompatActivity() , ICameraChangedCallback {
+
+    private val tag = "com.example.testapp." + this::class.simpleName
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         InstaCameraManager.getInstance().registerCameraChangedCallback(this)

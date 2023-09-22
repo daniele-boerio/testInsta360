@@ -8,20 +8,85 @@
     //live activity
     <string name="title_activity_live">Live Activity</string>
     <string name="preview_toolbar_title">Preview — Normal Mode</string>
-    <string name="preview_angle">Preview Type:</string>
+    <string name="preview_angle">Preview Type</string>
     <string name="preview_mode_normal">Normal</string>
     <string name="preview_mode_fisheye">Fisheye</string>
     <string name="preview_mode_perspective">Perspective</string>
     <string name="preview_mode_plane">Plane</string>
-    <string name="stab_type">Stabilizing Type:</string>
+    <string name="stab_type">Stabilizing Type</string>
     <string name="stab_type_auto">Auto Select</string>
     <string name="stab_type_panorama">For Panorama</string>
     <string name="stab_type_calibrate_horizon">Align the horizon only</string>
     <string name="stab_type_footage_motion_smooth">Smooth footage motion, no horizon alignment</string>
     <string name="stab_type_off">OFF</string>
-    <string name="choose_resolution">Resolution Selection:</string>
-    <string name="button_start">Start</string>
-    <string name="button_stop">Stop</string>
+    <string name="choose_resolution">Resolution Selection</string>
+    <string name="button_start_preview">Start Preview</string>
+    <string name="button_stop_preview">Stop Preview</string>
+    <string name="button_resume_live">Resume</string>
+    <string name="button_stop_live">Stop</string>
+
+
+    //custom dialog
+    <string name="dialog_title">RTMP Live</string>
+    <string name="live_paramter_rtmp">RTMP:</string>
+    <string name="hint_rtmp">rtmp://…</string>
+    <string name="live_paramter_width">width:</string>
+    <string name="live_paramter_height">height:</string>
+    <string name="live_paramter_fps">fps:</string>
+    <string name="live_paramter_bitrate">bitrate:</string>
+    <string name="live_paramter_Mbps">(Mbps)</string>
+    <string name="live_paramter_panorama">isPanorama</string>
+    <string name="live_paramter_audio_enabled">Enable Audio</string>
+    <string name="live_start_live">Start Live</string>
+    <string name="live_stop_live">Stop Live</string>
+    <string name="live_change_values">Change Values</string>
+    <string name="live_bind">Bind</string>
+    <string name="live_unbind">Unbind</string>
+    <string name="live_bind_mobile_network_desc">Bind mobile network, then you can use 4G to push live streaming when connecting camera by WIFI</string>
+
+    //network toast
+    <string name="live_toast_bind_mobile_network_successful">Bind mobile network successful</string>
+    <string name="live_toast_bind_mobile_network_failed">Bind mobile network failed</string>
+    <string name="live_toast_unbind_mobile_network">Unbind mobile network</string>
+    <string name="live_toast_unbind_mobile_network_when_lost">Lost mobile network, temporarily unbind</string>
+    <string name="live_toast_invalid_rtmp">Rtmp address is not valid</string>
+    <string name="live_toast_input_parameters">Please input all parameters</string>
+    <string name="live_push_finished">Live Push Finished</string>
+    <string name="live_push_error">Live Push Error</string>
+    <string name="live_fps_update">Living…  FPS: %d</string>
+    <string name="live_push_started">Live Push Started</string>
+
+    //Login Activity
+    <string name="title_activity_login">LoginActivity</string>
+    <string name="username">Username</string>
+    <string name="password">Password</string>
+    <string name="login">Login</string>
+    //Response codes
+    <string name="code200">result returned correctly</string>
+    <string name="code204">No Retirement Home for this user</string>
+    <string name="code401">verify username and password</string>
+    <string name="code403">client not authorized</string>
+    <string name="code422">missing data (credential)</string>
+
+    //User Activity
+    <string name="title_activity_user_list">Connect to User</string>
+    <string name="no_connection">No internet connection</string>
+    <string name="dialog_user_title">ATTENTION</string>
+    <string name="dialog_user_message">Are you sure to connect with this user?</string>
+    <string name="dialog_user_confirm">CONFIRM</string>
+    <string name="dialog_user_cancel">CANCEL</string>
+    <string name="refreshing_data">Refreshing data…</string>
+
+    //custom dialog wifi connection
+    <string name="wifi_connection_message">Connect to a camera using WIFI \'X3 …\'</string>
+    <string name="refresh">Refresh</string>
+    <string name="connect">Connect</string>
+    <string name="ready">READY</string>
+    <string name="not_ready">NOT READY</string>
+    <string name="retirement_home">Retirement Home</string>
+
+    //API url
+    <string name="API_url">https://develop.ewlab.di.unimi.it/telecyclette/api/connections</string>
 
 
 </resources>

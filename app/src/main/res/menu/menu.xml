@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@+id/stab_menu"
+        android:title="@string/stab_type">
+        <menu>
+            <group android:checkableBehavior="single"
+                android:id="@+id/stab_group">
+                <item android:id="@+id/stab_auto"
+                    android:title="@string/stab_type_auto"
+                    android:checked="true"/>
+                <item android:id="@+id/stab_panorama"
+                    android:title="@string/stab_type_panorama" />
+                <item android:id="@+id/stab_horizon"
+                    android:title="@string/stab_type_calibrate_horizon" />
+                <item android:id="@+id/stab_smooth"
+                    android:title="@string/stab_type_footage_motion_smooth" />
+                <item android:id="@+id/stab_off"
+                    android:title="@string/stab_type_off" />
+            </group>
+        </menu>
+    </item>
+    <item android:id="@+id/resolution_item"
+        android:title="@string/choose_resolution">
+        <menu>
+            <group android:checkableBehavior="single"
+                android:id="@+id/resolution_group">
+
+            </group>
+        </menu>
+    </item>
+</menu>

@@ -1,216 +1,176 @@
 package com.example.testapp.activity
 
-import android.R
+import android.Manifest
+import android.annotation.SuppressLint
+import android.content.Context
+import android.content.pm.PackageManager
+import android.net.wifi.WifiManager
 import android.os.Bundle
-import android.text.TextUtils
-import android.view.View
-import android.view.ViewGroup
-import android.widget.AdapterView
-import android.widget.ArrayAdapter
-import android.widget.RadioButton
-import android.widget.RadioGroup
-import android.widget.Spinner
+import android.util.Log
+import android.widget.TextView
+import android.widget.Toast
 import android.widget.ToggleButton
-import com.arashivision.insta360.basecamera.camera.CameraType
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import com.arashivision.sdkcamera.InstaCameraSDK
 import com.arashivision.sdkcamera.camera.InstaCameraManager
+import com.arashivision.sdkcamera.camera.InstaCameraManager.CONNECT_TYPE_WIFI
+import com.arashivision.sdkcamera.camera.callback.ILiveStatusListener
 import com.arashivision.sdkcamera.camera.callback.IPreviewStatusListener
+import com.arashivision.sdkcamera.camera.live.LiveParamsBuilder
+import com.arashivision.sdkcamera.camera.preview.PreviewParamsBuilder
 import com.arashivision.sdkcamera.camera.resolution.PreviewStreamResolution
 import com.arashivision.sdkmedia.InstaMediaSDK
 import com.arashivision.sdkmedia.player.capture.CaptureParamsBuilder
 import com.arashivision.sdkmedia.player.capture.InstaCapturePlayerView
 import com.arashivision.sdkmedia.player.config.InstaStabType
 import com.arashivision.sdkmedia.player.listener.PlayerViewListener
+import com.example.testapp.R
 import com.example.testapp.databinding.ActivityLiveBinding
+import com.example.testapp.dialog.WIFIConnectionDialog
+import com.example.testapp.observer.ObserveCameraActivity
+import com.example.testapp.utils.NetworkManager
 
-
-class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener {
+class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener, ILiveStatusListener {
+    private val tag = "com.example.testapp." + this::class.simpleName
     private lateinit var binding : ActivityLiveBinding
-    private var mLayoutContent: ViewGroup? = null
-    private var mCapturePlayerView: InstaCapturePlayerView? = null
-    private var mBtnSwitch: ToggleButton? = null
-    private var mRbNormal: RadioButton? = null
-    private var mRbFisheye: RadioButton? = null
-    private var mRbPerspective: RadioButton? = null
-    private var mRbPlane: RadioButton? = null
-    private var mSpinnerResolution: Spinner? = null
-    private var mSpinnerStabType: Spinner? = null
+    private lateinit var mTvLiveStatus : TextView
+    private lateinit var mBtnSwitchLive: ToggleButton
+    private lateinit var mCapturePlayerView: InstaCapturePlayerView
     private var mCurrentResolution: PreviewStreamResolution? = null
+    private lateinit var userid : String
+    private lateinit var ipaddress : String
+    private lateinit var port : String
+    private val requestCode = 123 // You can use any integer value
+    private lateinit var wifiConnectionDialog: WIFIConnectionDialog
+    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityLiveBinding.inflate(layoutInflater)
         val view = binding.root
         setContentView(view)
 
+        wifiConnectionDialog = WIFIConnectionDialog(this)
+
+        val intent = intent
+
+        userid = intent.getStringExtra("retirementHomeID")!!
+        ipaddress = intent.getStringExtra("ipaddress")!!
+        port = intent.getStringExtra("port")!!
+
+        //init InstaCameraSDK for camera connection
+        InstaCameraSDK.init(this.application)
         //init InstaMediaSDK for preview
         InstaMediaSDK.init(this.application)
 
-        bindViews()
+        val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        val wifiInfo = wifiManager.connectionInfo
+        val ssid = wifiInfo.ssid.replace("\"", "")
 
-        InstaCameraManager.getInstance().setPreviewStatusChangedListener(this)
+        InstaCameraManager.getInstance().openCamera(InstaCameraManager.CONNECT_TYPE_USB)
+
+        if(ssid.startsWith("X3 ")){
+            InstaCameraManager.getInstance().openCamera(InstaCameraManager.CONNECT_TYPE_WIFI)
+        }else{
+            wifiConnectionDialog.show()
+        }
+        bindViews()
     }
 
     private fun bindViews() {
-        mLayoutContent = binding.layoutContent
         mCapturePlayerView = binding.playerCapture
-        mCapturePlayerView!!.setLifecycle(lifecycle)
-        mBtnSwitch = binding.btnSwitch
-        mBtnSwitch!!.setOnClickListener {
-            if (mBtnSwitch!!.isChecked) {
-                if (mCurrentResolution == null) {
-                    InstaCameraManager.getInstance().startPreviewStream()
-                } else {
-                    InstaCameraManager.getInstance().startPreviewStream(mCurrentResolution)
-                }
-            } else {
-                InstaCameraManager.getInstance().closePreviewStream()
-            }
-        }
-        mRbNormal = binding.rbNormal
-        mRbFisheye = binding.rbFisheye
-        mRbPerspective = binding.rbPerspective
-        mRbPlane = binding.rbPlane
-        val radioGroup: RadioGroup = binding.rgPreviewMode
-        radioGroup.setOnCheckedChangeListener { _: RadioGroup?, checkedId: Int ->
-            // Need to restart the preview stream when switching between plane and others
-            if (checkedId == binding.rbPlane.id) {
-                InstaCameraManager.getInstance().closePreviewStream()
-                if (mCurrentResolution == null) {
-                    InstaCameraManager.getInstance().startPreviewStream()
-                } else {
-                    InstaCameraManager.getInstance().startPreviewStream(mCurrentResolution)
-                }
-                mRbFisheye!!.isEnabled = false
-                mRbPerspective!!.isEnabled = false
-            } else if (checkedId == binding.rbNormal.id) {
-                if (!mRbFisheye!!.isEnabled || !mRbPerspective!!.isEnabled) {
-                    InstaCameraManager.getInstance().closePreviewStream()
-                    if (mCurrentResolution == null) {
-                        InstaCameraManager.getInstance().startPreviewStream()
-                    } else {
-                        InstaCameraManager.getInstance().startPreviewStream(mCurrentResolution)
-                    }
-                    mRbFisheye!!.isEnabled = true
-                    mRbPerspective!!.isEnabled = true
-                } else {
-                    // 切换到普通模式
-                    // Switch to Normal Mode
-                    mCapturePlayerView!!.switchNormalMode()
-                }
-            } else if (checkedId == binding.rbFisheye.id) {
-                // 切换到鱼眼模式
-                // Switch to Fisheye Mode
-                mCapturePlayerView!!.switchFisheyeMode()
-            } else if (checkedId == binding.rbPerspective.id) {
-                // 切换到透视模式
-                // Switch to Perspective Mode
-                mCapturePlayerView!!.switchPerspectiveMode()
-            }
-        }
-        mSpinnerResolution = binding.spinnerResolution
-        val adapter1: ArrayAdapter<PreviewStreamResolution> =
-            ArrayAdapter(this, R.layout.simple_spinner_dropdown_item)
-        adapter1.addAll(
-            InstaCameraManager.getInstance()
-                .getSupportedPreviewStreamResolution(InstaCameraManager.PREVIEW_TYPE_NORMAL)
-        )
-        mSpinnerResolution!!.adapter = adapter1
-        mSpinnerResolution!!.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(
-                parent: AdapterView<*>?,
-                view: View,
-                position: Int,
-                id: Long
-            ) {
-                mCurrentResolution = adapter1.getItem(position)
-                InstaCameraManager.getInstance().closePreviewStream()
-                InstaCameraManager.getInstance().startPreviewStream(mCurrentResolution)
-            }
+        mCapturePlayerView.setLifecycle(lifecycle)
+        mBtnSwitchLive = binding.btnSwitchLive
+        mTvLiveStatus = binding.tvLiveStatus
 
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
-        }
-        mSpinnerStabType = binding.spinnerStabType
-        val adapter2: ArrayAdapter<String> =
-            ArrayAdapter(this, R.layout.simple_spinner_dropdown_item)
-        adapter2.add(getString(com.example.testapp.R.string.stab_type_auto))
-        adapter2.add(getString(com.example.testapp.R.string.stab_type_panorama))
-        adapter2.add(getString(com.example.testapp.R.string.stab_type_calibrate_horizon))
-        adapter2.add(getString(com.example.testapp.R.string.stab_type_footage_motion_smooth))
-        adapter2.add(getString(com.example.testapp.R.string.stab_type_off))
-        mSpinnerStabType!!.adapter = adapter2
-        mSpinnerStabType!!.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(
-                parent: AdapterView<*>?,
-                view: View,
-                position: Int,
-                id: Long
-            ) {
-                if ((position == 4 && mCapturePlayerView!!.isStabEnabled
-                            || position != 4 && !mCapturePlayerView!!.isStabEnabled)
-                ) {
-                    InstaCameraManager.getInstance().closePreviewStream()
-                    if (mCurrentResolution == null) {
-                        InstaCameraManager.getInstance().startPreviewStream()
-                    } else {
-                        InstaCameraManager.getInstance().startPreviewStream(mCurrentResolution)
-                    }
-                } else {
-                    mCapturePlayerView!!.setStabType(stabType)
-                }
-            }
+        //until preview is running the live button is disabled
+        mBtnSwitchLive.isEnabled = false
 
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        mBtnSwitchLive.setOnClickListener{
+            if(mBtnSwitchLive.isChecked){
+                mBtnSwitchLive.isChecked = true   //set to stop
+                if (InstaCameraManager.getInstance().cameraConnectedType == CONNECT_TYPE_WIFI){
+                    NetworkManager.getInstance().exchangeNetToMobile(this.applicationContext)
+                }
+                checkToStartLive()
+            }else{
+                mBtnSwitchLive.isChecked = false  //set to resume
+                stopLive()
+            }
         }
-        val isNanoS =
-            TextUtils.equals(InstaCameraManager.getInstance().cameraType, CameraType.NANOS.type)
-        mSpinnerStabType!!.visibility = if (isNanoS) View.GONE else View.VISIBLE
     }
 
-    private val stabType: Int
-        get() = when (mSpinnerStabType!!.selectedItemPosition) {
-            0 -> InstaStabType.STAB_TYPE_AUTO
-            1 -> InstaStabType.STAB_TYPE_PANORAMA
-            2 -> InstaStabType.STAB_TYPE_CALIBRATE_HORIZON
-            3 -> InstaStabType.STAB_TYPE_FOOTAGE_MOTION_SMOOTH
-            else -> InstaStabType.STAB_TYPE_AUTO
-        }
+    private fun restartPreview() {
+        val builder = PreviewParamsBuilder()
+            .setStreamResolution(mCurrentResolution)
+            .setPreviewType(InstaCameraManager.PREVIEW_TYPE_LIVE)
+            .setAudioEnabled(true)
+        InstaCameraManager.getInstance().closePreviewStream()
+        InstaCameraManager.getInstance().startPreviewStream(builder)
+    }
+
+    private fun checkToStartLive(): Boolean {
+        //todo
+        val rtmp = "rtmp://$ipaddress/$port"
+        val width = mCurrentResolution!!.width
+        val height = mCurrentResolution!!.height
+        val fps = mCurrentResolution!!.fps
+        mCapturePlayerView.setLiveType(InstaCapturePlayerView.LIVE_TYPE_PANORAMA)
+        val builder = LiveParamsBuilder()
+            .setRtmp(rtmp)
+            .setWidth(width)
+            .setHeight(height)
+            .setFps(fps)
+            //.setBitrate(bitrate.toInt() * 1024 * 1024)
+            .setBitrate(480000)
+            .setPanorama(true) // 设置网络ID即可在使用WIFI连接相机时使用4G网络推流
+            // set NetId to use 4G to push live streaming when connecting camera by WIFI
+            .setNetId(NetworkManager.getInstance().getMobileNetId())
+        InstaCameraManager.getInstance().startLive(builder, this)
+        return true
+    }
+
+    private fun stopLive() {
+        InstaCameraManager.getInstance().stopLive()
+    }
 
     override fun onStop() {
         super.onStop()
         if (isFinishing) {
-            // 退出页面时需要关闭预览
             // Auto close preview after page loses focus
-            InstaCameraManager.getInstance().setPreviewStatusChangedListener(null)
+            InstaCameraManager.getInstance().stopLive()
             InstaCameraManager.getInstance().closePreviewStream()
-            mCapturePlayerView!!.destroy()
+            InstaCameraManager.getInstance().setPreviewStatusChangedListener(null)
+            mCapturePlayerView.destroy()
+            NetworkManager.getInstance().clearBindProcess(this.applicationContext)
         }
     }
 
-    override fun onOpening() {
-        // 预览开启中
-        // Preview Opening
-        mBtnSwitch!!.isChecked = true
-    }
-
     override fun onOpened() {
-        // 预览开启成功，可以播放预览流
         // Preview stream is on and can be played
         InstaCameraManager.getInstance().setStreamEncode()
-        mCapturePlayerView!!.setPlayerViewListener(object : PlayerViewListener {
+        mCapturePlayerView.setPlayerViewListener(object : PlayerViewListener {
             override fun onLoadingFinish() {
-                InstaCameraManager.getInstance().setPipeline(mCapturePlayerView!!.pipeline)
+                mBtnSwitchLive.isEnabled = true
+                mBtnSwitchLive.isChecked = true //set to Stop
+                InstaCameraManager.getInstance().setPipeline(mCapturePlayerView.pipeline)
+                if (InstaCameraManager.getInstance().cameraConnectedType == CONNECT_TYPE_WIFI){
+                    NetworkManager.getInstance().exchangeNetToMobile(applicationContext)
+                }
+                checkToStartLive()
             }
 
             override fun onReleaseCameraPipeline() {
                 InstaCameraManager.getInstance().setPipeline(null)
             }
         })
-        mCapturePlayerView!!.prepare(createParams())
-        mCapturePlayerView!!.play()
-        mCapturePlayerView!!.keepScreenOn = true
+        mCapturePlayerView.prepare(createParams())
+        mCapturePlayerView.play()
+        mCapturePlayerView.keepScreenOn = true
     }
 
     private fun createParams(): CaptureParamsBuilder? {
-        val builder = CaptureParamsBuilder()
+        return CaptureParamsBuilder()
             .setCameraType(InstaCameraManager.getInstance().cameraType)
             .setMediaOffset(InstaCameraManager.getInstance().mediaOffset)
             .setMediaOffsetV2(InstaCameraManager.getInstance().mediaOffsetV2)
@@ -218,38 +178,169 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener {
             .setCameraSelfie(InstaCameraManager.getInstance().isCameraSelfie)
             .setGyroTimeStamp(InstaCameraManager.getInstance().gyroTimeStamp)
             .setBatteryType(InstaCameraManager.getInstance().batteryType)
-            .setStabType(stabType)
-            .setStabEnabled(mSpinnerStabType!!.selectedItemPosition != 4)
-        if (mCurrentResolution != null) {
-            builder.setResolutionParams(
+            .setStabType(InstaStabType.STAB_TYPE_AUTO)
+            .setStabEnabled(true)
+            .setLive(true)
+            .setResolutionParams(
                 mCurrentResolution!!.width,
                 mCurrentResolution!!.height,
                 mCurrentResolution!!.fps
             )
-        }
-        if (mRbPlane!!.isChecked) {
-            // 平铺模式
-            // Plane Mode
-            builder.setRenderModelType(CaptureParamsBuilder.RENDER_MODE_PLANE_STITCH)
-                .setScreenRatio(2, 1)
-        } else {
-            // 普通模式
-            // Normal Mode
-            builder.renderModelType = CaptureParamsBuilder.RENDER_MODE_AUTO
-        }
-        return builder
     }
-
     override fun onIdle() {
-        // 预览已停止
         // Preview Stopped
-        mCapturePlayerView!!.destroy()
-        mCapturePlayerView!!.keepScreenOn = false
+        mBtnSwitchLive.isEnabled = false
+        mCapturePlayerView.destroy()
+        mCapturePlayerView.keepScreenOn = false
     }
 
-    override fun onError() {
-        // 预览开启失败
-        // Preview Failed
-        mBtnSwitch!!.isChecked = false
+    override fun onLivePushStarted() {
+        mTvLiveStatus.setText(R.string.live_push_started)
+    }
+
+    override fun onLivePushFinished() {
+        mBtnSwitchLive.isChecked = false    //resume
+        mTvLiveStatus.setText(R.string.live_push_finished)
+    }
+
+    @SuppressLint("SetTextI18n")
+    override fun onLivePushError(error : Int, desc : String) {
+        mBtnSwitchLive.isChecked = false    //resume
+        mTvLiveStatus.text = getString(R.string.live_push_error) + " ($error : $desc)"
+        Log.d(tag, getString(R.string.live_push_error) + " ($error : $desc)")
+    }
+
+    override fun onLiveFpsUpdate(fps: Int) {
+        mTvLiveStatus.text = getString(R.string.live_fps_update, fps)
+    }
+
+    override fun onCameraStatusChanged(enabled: Boolean) {
+        super.onCameraStatusChanged(enabled)
+        if (!enabled) {
+            mBtnSwitchLive.isChecked = false    //resume
+            mBtnSwitchLive.isEnabled = false
+        }else{
+            if (wifiConnectionDialog.isShowing){
+                wifiConnectionDialog.dismiss()
+            }
+            val resolutionList = InstaCameraManager.getInstance().getSupportedPreviewStreamResolution(InstaCameraManager.PREVIEW_TYPE_LIVE)
+            Log.d(tag, resolutionList.toString())
+            mCurrentResolution = resolutionList[resolutionList.size-1]
+            Log.d(tag, mCurrentResolution.toString())
+            InstaCameraManager.getInstance().setPreviewStatusChangedListener(this)
+            restartPreview()
+        }
+    }
+
+    override fun onCameraConnectError(errorCode: Int) {
+        super.onCameraConnectError(errorCode)
+        Toast.makeText(
+            this,
+            "Communication error:$errorCode",
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
+    override fun onCameraSDCardStateChanged(enabled: Boolean) {
+        super.onCameraSDCardStateChanged(enabled)
+        if (enabled) {
+            Toast.makeText(this, "SD card enabled", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "SD card disabled", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun hasPermissions(): Boolean {
+        val internetPermission = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.INTERNET
+        )
+        val accessNetworkStatePermission = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.ACCESS_NETWORK_STATE
+        )
+        val changeNetworkStatePermission = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.CHANGE_NETWORK_STATE
+        )
+        val accessFineLocationPermission = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.ACCESS_FINE_LOCATION
+        )
+        val accessCoarseLocationPermission = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.ACCESS_COARSE_LOCATION
+        )
+        val changeWifiStatePermission = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.CHANGE_WIFI_STATE
+        )
+        val accessWifiStatePermission = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.ACCESS_WIFI_STATE
+        )
+
+        // Return true only if both permissions are granted
+        return internetPermission == PackageManager.PERMISSION_GRANTED &&
+                accessNetworkStatePermission == PackageManager.PERMISSION_GRANTED &&
+                changeNetworkStatePermission == PackageManager.PERMISSION_GRANTED &&
+                accessFineLocationPermission == PackageManager.PERMISSION_GRANTED &&
+                accessCoarseLocationPermission == PackageManager.PERMISSION_GRANTED &&
+                changeWifiStatePermission == PackageManager.PERMISSION_GRANTED &&
+                accessWifiStatePermission == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun requestPermissions() {
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(
+                Manifest.permission.INTERNET,
+                Manifest.permission.ACCESS_NETWORK_STATE,
+                Manifest.permission.CHANGE_NETWORK_STATE,
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+                Manifest.permission.CHANGE_WIFI_STATE,
+                Manifest.permission.ACCESS_WIFI_STATE
+            ),
+            requestCode
+        )
+    }
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+
+        if (requestCode == this.requestCode) {
+            for (i in permissions.indices) {
+                val permission = permissions[i]
+                val grantResult = grantResults[i]
+
+                if (grantResult == PackageManager.PERMISSION_GRANTED) {
+                    // Permission granted
+                    Log.d(tag, "Permission granted: $permission")
+
+                } else {
+                    // Permission denied
+                    Log.d(tag, "Permission denied: $permission")
+                    // Handle the denied permission (e.g., show a message to the user)
+
+                }
+            }
+        }
+        if(!grantResults.contains(PackageManager.PERMISSION_DENIED)){
+            //permission granted
+        }else{
+            //permission denied
+            Toast.makeText(this, "Permission is required" , Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        val wifiInfo = wifiManager.connectionInfo
+        val ssid = wifiInfo.ssid.replace("\"", "")
+
+        if(ssid.startsWith("X3")){
+            InstaCameraManager.getInstance().openCamera(InstaCameraManager.CONNECT_TYPE_WIFI)
+            if (wifiConnectionDialog.isShowing){
+                wifiConnectionDialog.dismiss()
+            }
+        }
     }
 }
