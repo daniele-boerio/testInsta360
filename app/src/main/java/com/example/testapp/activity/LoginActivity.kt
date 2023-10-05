@@ -2,6 +2,8 @@ package com.example.testapp.activity
 
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -13,7 +15,7 @@ import androidx.appcompat.app.AppCompatActivity
 import com.example.testapp.R
 import com.example.testapp.databinding.ActivityLoginBinding
 import com.example.testapp.model.User
-import com.google.gson.Gson
+import com.example.testapp.utils.NetworkManager
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.Credentials
@@ -42,6 +44,12 @@ class LoginActivity : AppCompatActivity() {
         etUsername = binding.username
         etPassword = binding.password
 
+        //check if internet is available to perform the API request
+        if (!isInternetAvailable(this)) {
+            //use mobile network for api request
+            NetworkManager.getInstance().exchangeNetToMobile(this.applicationContext)
+        }
+
         //disable and re-enable the button if username and password edit texts are empty
         val textWatcher = object : TextWatcher {
             override fun afterTextChanged(s: Editable?) {}
@@ -64,8 +72,13 @@ class LoginActivity : AppCompatActivity() {
                 val username = etUsername.text.toString().trim()
                 val password = etPassword.text.toString().trim()
 
-                //check user and password with webAPI
-                makeBasicAuthRequest(username,password)
+                if (isInternetAvailable(this)){
+                    //check user and password with webAPI
+                    makeBasicAuthRequest(username,password)
+                }else{
+                    Toast.makeText(this, getString(R.string.no_connection), Toast.LENGTH_SHORT).show()
+                }
+
             }
 
         }
@@ -98,7 +111,7 @@ class LoginActivity : AppCompatActivity() {
                         200 -> {    //result returned correctly
                             Log.d(tag,"Request code ${response.code}: ${getString(R.string.code200)}")
 
-                            val responseBody = response.body?.string()
+                            val responseBody = response.body!!.string()
                             // Parse the JSON response into your User data model
                             val user = parseJsonToUserData(responseBody)
                             Log.d(tag, user.toString())
@@ -168,10 +181,8 @@ class LoginActivity : AppCompatActivity() {
             }
         })
     }
-    fun parseJsonToUserData(json: String?): User {
-        // Implement JSON parsing logic here and return a UserData object
-        // You can use libraries like Gson to simplify JSON parsing
-        // For simplicity, here's a basic example:
+    fun parseJsonToUserData(json: String): User {
+        // Implement JSON parsing logic here and return a User object
         val jsonObject = JSONObject(json)
         Log.d(tag, jsonObject.toString())
         return User(
@@ -179,6 +190,19 @@ class LoginActivity : AppCompatActivity() {
             jsonObject.getString("ipAddress"),
             jsonObject.getString("port")
         )
+    }
+
+    private fun isInternetAvailable(context: Context): Boolean {
+        var isOnline = false
+        try {
+            val manager = context.getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+            val capabilities = manager.getNetworkCapabilities(manager.activeNetwork) // active network is always the wifi if connected
+            val bounderNetwork = manager.getNetworkCapabilities(manager.boundNetworkForProcess) // bounded network could be the mobile network if Binded or could be null
+            isOnline = (capabilities != null && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) || (bounderNetwork != null && bounderNetwork.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED))
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return isOnline
     }
 
 }

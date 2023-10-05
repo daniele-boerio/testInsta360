@@ -4,6 +4,10 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.wifi.WifiManager
 import android.os.Bundle
 import android.util.Log
@@ -14,11 +18,11 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.arashivision.sdkcamera.InstaCameraSDK
 import com.arashivision.sdkcamera.camera.InstaCameraManager
-import com.arashivision.sdkcamera.camera.InstaCameraManager.CONNECT_TYPE_WIFI
 import com.arashivision.sdkcamera.camera.callback.ILiveStatusListener
 import com.arashivision.sdkcamera.camera.callback.IPreviewStatusListener
 import com.arashivision.sdkcamera.camera.live.LiveParamsBuilder
 import com.arashivision.sdkcamera.camera.preview.PreviewParamsBuilder
+import com.arashivision.sdkcamera.camera.preview.VideoData
 import com.arashivision.sdkcamera.camera.resolution.PreviewStreamResolution
 import com.arashivision.sdkmedia.InstaMediaSDK
 import com.arashivision.sdkmedia.player.capture.CaptureParamsBuilder
@@ -30,11 +34,18 @@ import com.example.testapp.databinding.ActivityLiveBinding
 import com.example.testapp.dialog.WIFIConnectionDialog
 import com.example.testapp.observer.ObserveCameraActivity
 import com.example.testapp.utils.NetworkManager
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.LocationServices
+
 
 class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener, ILiveStatusListener {
     private val tag = "com.example.testapp." + this::class.simpleName
     private lateinit var binding : ActivityLiveBinding
     private lateinit var mTvLiveStatus : TextView
+    private lateinit var mTvVelocity : TextView
     private lateinit var mBtnSwitchLive: ToggleButton
     private lateinit var mCapturePlayerView: InstaCapturePlayerView
     private var mCurrentResolution: PreviewStreamResolution? = null
@@ -43,7 +54,10 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener, ILiveStatu
     private lateinit var port : String
     private val requestCode = 123 // You can use any integer value
     private lateinit var wifiConnectionDialog: WIFIConnectionDialog
-    
+    private lateinit var ssid : String
+    private lateinit var fusedLocationClient: FusedLocationProviderClient
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityLiveBinding.inflate(layoutInflater)
@@ -53,7 +67,6 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener, ILiveStatu
         wifiConnectionDialog = WIFIConnectionDialog(this)
 
         val intent = intent
-
         userid = intent.getStringExtra("retirementHomeID")!!
         ipaddress = intent.getStringExtra("ipaddress")!!
         port = intent.getStringExtra("port")!!
@@ -63,18 +76,24 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener, ILiveStatu
         //init InstaMediaSDK for preview
         InstaMediaSDK.init(this.application)
 
+        // Initialize the FusedLocationProviderClient
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+
+
         val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
         val wifiInfo = wifiManager.connectionInfo
-        val ssid = wifiInfo.ssid.replace("\"", "")
+        ssid = wifiInfo.ssid.replace("\"", "")
 
-        InstaCameraManager.getInstance().openCamera(InstaCameraManager.CONNECT_TYPE_USB)
-
-        if(ssid.startsWith("X3 ")){
-            InstaCameraManager.getInstance().openCamera(InstaCameraManager.CONNECT_TYPE_WIFI)
+        if(!hasPermissions()){
+            requestPermissions()
         }else{
-            wifiConnectionDialog.show()
+            if(ssid.startsWith("X3 ")){
+                InstaCameraManager.getInstance().openCamera(InstaCameraManager.CONNECT_TYPE_WIFI)
+            }else{
+                wifiConnectionDialog.show()
+            }
+            bindViews()
         }
-        bindViews()
     }
 
     private fun bindViews() {
@@ -82,6 +101,7 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener, ILiveStatu
         mCapturePlayerView.setLifecycle(lifecycle)
         mBtnSwitchLive = binding.btnSwitchLive
         mTvLiveStatus = binding.tvLiveStatus
+        mTvVelocity = binding.velocity
 
         //until preview is running the live button is disabled
         mBtnSwitchLive.isEnabled = false
@@ -89,13 +109,18 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener, ILiveStatu
         mBtnSwitchLive.setOnClickListener{
             if(mBtnSwitchLive.isChecked){
                 mBtnSwitchLive.isChecked = true   //set to stop
-                if (InstaCameraManager.getInstance().cameraConnectedType == CONNECT_TYPE_WIFI){
-                    NetworkManager.getInstance().exchangeNetToMobile(this.applicationContext)
+
+                //use mobile network for streaming
+                if (NetworkManager.getInstance().isBindingMobileNetwork()){
+                    checkToStartLive()
+                }else{
+                    exchangeNetToMobileInsta(this.applicationContext)
                 }
-                checkToStartLive()
             }else{
                 mBtnSwitchLive.isChecked = false  //set to resume
                 stopLive()
+                stopLocationUpdates()
+                mTvLiveStatus.setText(R.string.live_push_finished)
             }
         }
     }
@@ -111,7 +136,8 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener, ILiveStatu
 
     private fun checkToStartLive(): Boolean {
         //todo
-        val rtmp = "rtmp://$ipaddress/$port"
+        val rtmp = "rtmp://develop.ewlab.di.unimi.it:3027/serverRTMP/mystream"      //"rtmp://$ipaddress:$port/serverRTMP/mystream" //rtmp://develop.ewlab.di.unimi.it:3027/serverRTMP/mystream
+        Log.d(tag, rtmp)
         val width = mCurrentResolution!!.width
         val height = mCurrentResolution!!.height
         val fps = mCurrentResolution!!.fps
@@ -122,8 +148,8 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener, ILiveStatu
             .setHeight(height)
             .setFps(fps)
             //.setBitrate(bitrate.toInt() * 1024 * 1024)
-            .setBitrate(480000)
-            .setPanorama(true) // 设置网络ID即可在使用WIFI连接相机时使用4G网络推流
+            .setBitrate(4800000)
+            .setPanorama(true)
             // set NetId to use 4G to push live streaming when connecting camera by WIFI
             .setNetId(NetworkManager.getInstance().getMobileNetId())
         InstaCameraManager.getInstance().startLive(builder, this)
@@ -154,10 +180,7 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener, ILiveStatu
                 mBtnSwitchLive.isEnabled = true
                 mBtnSwitchLive.isChecked = true //set to Stop
                 InstaCameraManager.getInstance().setPipeline(mCapturePlayerView.pipeline)
-                if (InstaCameraManager.getInstance().cameraConnectedType == CONNECT_TYPE_WIFI){
-                    NetworkManager.getInstance().exchangeNetToMobile(applicationContext)
-                }
-                checkToStartLive()
+                exchangeNetToMobileInsta(applicationContext)
             }
 
             override fun onReleaseCameraPipeline() {
@@ -179,6 +202,7 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener, ILiveStatu
             .setGyroTimeStamp(InstaCameraManager.getInstance().gyroTimeStamp)
             .setBatteryType(InstaCameraManager.getInstance().batteryType)
             .setStabType(InstaStabType.STAB_TYPE_AUTO)
+            .setGestureEnabled(false)
             .setStabEnabled(true)
             .setLive(true)
             .setResolutionParams(
@@ -196,8 +220,8 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener, ILiveStatu
 
     override fun onLivePushStarted() {
         mTvLiveStatus.setText(R.string.live_push_started)
+        startLocationUpdates()
     }
-
     override fun onLivePushFinished() {
         mBtnSwitchLive.isChecked = false    //resume
         mTvLiveStatus.setText(R.string.live_push_finished)
@@ -225,7 +249,7 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener, ILiveStatu
             }
             val resolutionList = InstaCameraManager.getInstance().getSupportedPreviewStreamResolution(InstaCameraManager.PREVIEW_TYPE_LIVE)
             Log.d(tag, resolutionList.toString())
-            mCurrentResolution = resolutionList[resolutionList.size-1]
+            mCurrentResolution = resolutionList[resolutionList.size-2]
             Log.d(tag, mCurrentResolution.toString())
             InstaCameraManager.getInstance().setPreviewStatusChangedListener(this)
             restartPreview()
@@ -324,10 +348,64 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener, ILiveStatu
         }
         if(!grantResults.contains(PackageManager.PERMISSION_DENIED)){
             //permission granted
+            if(ssid.startsWith("X3 ")){
+                InstaCameraManager.getInstance().openCamera(InstaCameraManager.CONNECT_TYPE_WIFI)
+            }else{
+                wifiConnectionDialog.show()
+            }
+            bindViews()
         }else{
             //permission denied
-            Toast.makeText(this, "Permission is required" , Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Permission are required" , Toast.LENGTH_SHORT).show()
         }
+    }
+
+    // Bind Mobile Network
+    private fun exchangeNetToMobileInsta(context: Context) {
+        if (NetworkManager.getInstance().isBindingMobileNetwork()) {
+            return
+        }
+        val connManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val networks = connManager.allNetworks
+        for (network in networks) {
+            val networkInfo = connManager.getNetworkInfo(network)
+            if (networkInfo != null && networkInfo.type == ConnectivityManager.TYPE_WIFI) {
+                // Need to set network Id of current wifi to camera
+                InstaCameraManager.getInstance().setNetIdToCamera(NetworkManager.getInstance().getNetworkId(network!!))
+            }
+        }
+        val request = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
+            .build()
+        NetworkManager.getInstance().mNetworkCallback = object : ConnectivityManager.NetworkCallback() {
+            @SuppressLint("SuspiciousIndentation")
+            override fun onAvailable(network: Network) {
+                super.onAvailable(network)
+                val bindSuccessful: Boolean =
+                    connManager.bindProcessToNetwork(null)
+                connManager.bindProcessToNetwork(network)
+                // Record the bound mobile network ID
+                NetworkManager.getInstance().mMobileNetId = NetworkManager.getInstance().getNetworkId(network)
+                if (bindSuccessful) {
+                    Log.d(tag, context.getString(R.string.live_toast_bind_mobile_network_successful))
+                    //binding is successful so check to start the live
+                    checkToStartLive()
+
+                } else {
+                    Log.d(tag, context.getString(R.string.live_toast_bind_mobile_network_failed))
+
+                }
+            }
+
+            override fun onLost(network: Network) {
+                super.onLost(network)
+                // The mobile network is suddenly unavailable, need to temporarily unbind and wait for the network to recover again
+                connManager.bindProcessToNetwork(null)
+                Log.d(tag, context.getString(R.string.live_toast_unbind_mobile_network_when_lost))
+            }
+        }
+        connManager.requestNetwork(request, NetworkManager.getInstance().mNetworkCallback as ConnectivityManager.NetworkCallback)
     }
 
     override fun onResume() {
@@ -342,5 +420,35 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener, ILiveStatu
                 wifiConnectionDialog.dismiss()
             }
         }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun startLocationUpdates() {
+        // Create location request with desired accuracy and update interval
+        val locationRequest = LocationRequest.create()
+            .setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY)
+            .setInterval(5000) // Update interval in milliseconds
+
+        // Register for location updates
+        fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, null)
+    }
+
+    private fun stopLocationUpdates() {
+        fusedLocationClient.removeLocationUpdates(locationCallback)
+    }
+    private val locationCallback = object : LocationCallback() {
+        override fun onLocationResult(locationResult: LocationResult) {
+            locationResult.lastLocation?.let { location ->
+                // Use location.speed to get the current velocity in meters per second
+                val velocity = location.speed
+
+                mTvVelocity.text = velocity.toString()
+
+            }
+        }
+    }
+
+    override fun onVideoData(videoData: VideoData) {
+        videoData.data
     }
 }
