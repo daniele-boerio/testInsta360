@@ -87,6 +87,7 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener, ILiveStatu
         if(!hasPermissions()){
             requestPermissions()
         }else{
+            //InstaCameraManager.getInstance().openCamera(InstaCameraManager.CONNECT_TYPE_USB)
             if(ssid.startsWith("X3 ")){
                 InstaCameraManager.getInstance().openCamera(InstaCameraManager.CONNECT_TYPE_WIFI)
             }else{
@@ -136,8 +137,10 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener, ILiveStatu
 
     private fun checkToStartLive(): Boolean {
         //todo
-        val rtmp = "rtmp://develop.ewlab.di.unimi.it:3027/serverRTMP/mystream"      //"rtmp://$ipaddress:$port/serverRTMP/mystream" //rtmp://develop.ewlab.di.unimi.it:3027/serverRTMP/mystream
-        Log.d(tag, rtmp)
+        val rtmp = "rtmp://develop.ewlab.di.unimi.it:3027/serverRTMP/mystream"
+        //rtmp://develop.ewlab.di.unimi.it:3027/serverRTMP/mystream
+        //rtmp://$ipaddress:$port/serverRTMP/mystream
+        Log.d(tag, "$ipaddress:$port")
         val width = mCurrentResolution!!.width
         val height = mCurrentResolution!!.height
         val fps = mCurrentResolution!!.fps
@@ -202,7 +205,6 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener, ILiveStatu
             .setGyroTimeStamp(InstaCameraManager.getInstance().gyroTimeStamp)
             .setBatteryType(InstaCameraManager.getInstance().batteryType)
             .setStabType(InstaStabType.STAB_TYPE_AUTO)
-            .setGestureEnabled(false)
             .setStabEnabled(true)
             .setLive(true)
             .setResolutionParams(
@@ -448,7 +450,4 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener, ILiveStatu
         }
     }
 
-    override fun onVideoData(videoData: VideoData) {
-        videoData.data
-    }
 }
