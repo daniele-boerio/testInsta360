@@ -18,9 +18,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.arashivision.sdkcamera.InstaCameraSDK
 import com.arashivision.sdkcamera.camera.InstaCameraManager
-import com.arashivision.sdkcamera.camera.callback.ILiveStatusListener
 import com.arashivision.sdkcamera.camera.callback.IPreviewStatusListener
-import com.arashivision.sdkcamera.camera.live.LiveParamsBuilder
 import com.arashivision.sdkcamera.camera.preview.PreviewParamsBuilder
 import com.arashivision.sdkcamera.camera.preview.VideoData
 import com.arashivision.sdkcamera.camera.resolution.PreviewStreamResolution
@@ -41,7 +39,7 @@ import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 
 
-class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener, ILiveStatusListener {
+class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener {
     private val tag = "com.example.testapp." + this::class.simpleName
     private lateinit var binding : ActivityLiveBinding
     private lateinit var mTvLiveStatus : TextView
@@ -56,6 +54,11 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener, ILiveStatu
     private lateinit var wifiConnectionDialog: WIFIConnectionDialog
     private lateinit var ssid : String
     private lateinit var fusedLocationClient: FusedLocationProviderClient
+    private val signalingServerURL = "" //todo
+
+
+    private val usb = false //test connection with usb
+
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -87,8 +90,10 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener, ILiveStatu
         if(!hasPermissions()){
             requestPermissions()
         }else{
-            //InstaCameraManager.getInstance().openCamera(InstaCameraManager.CONNECT_TYPE_USB)
-            if(ssid.startsWith("X3 ")){
+            if (usb) {
+                InstaCameraManager.getInstance().openCamera(InstaCameraManager.CONNECT_TYPE_USB)
+            }
+            else if(ssid.startsWith("X3 ")){
                 InstaCameraManager.getInstance().openCamera(InstaCameraManager.CONNECT_TYPE_WIFI)
             }else{
                 wifiConnectionDialog.show()
@@ -129,45 +134,52 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener, ILiveStatu
     private fun restartPreview() {
         val builder = PreviewParamsBuilder()
             .setStreamResolution(mCurrentResolution)
-            .setPreviewType(InstaCameraManager.PREVIEW_TYPE_LIVE)
+            .setPreviewType(InstaCameraManager.PREVIEW_TYPE_NORMAL)
             .setAudioEnabled(true)
         InstaCameraManager.getInstance().closePreviewStream()
         InstaCameraManager.getInstance().startPreviewStream(builder)
     }
 
-    private fun checkToStartLive(): Boolean {
+
+    private fun checkToStartLive() {
         //todo
-        val rtmp = "rtmp://develop.ewlab.di.unimi.it:3027/serverRTMP/mystream"
+        val ip = "rtmp://develop.ewlab.di.unimi.it:3027/serverRTMP/mystream"
         //rtmp://develop.ewlab.di.unimi.it:3027/serverRTMP/mystream
         //rtmp://$ipaddress:$port/serverRTMP/mystream
         Log.d(tag, "$ipaddress:$port")
         val width = mCurrentResolution!!.width
         val height = mCurrentResolution!!.height
         val fps = mCurrentResolution!!.fps
-        mCapturePlayerView.setLiveType(InstaCapturePlayerView.LIVE_TYPE_PANORAMA)
-        val builder = LiveParamsBuilder()
-            .setRtmp(rtmp)
-            .setWidth(width)
-            .setHeight(height)
-            .setFps(fps)
-            //.setBitrate(bitrate.toInt() * 1024 * 1024)
-            .setBitrate(4800000)
-            .setPanorama(true)
-            // set NetId to use 4G to push live streaming when connecting camera by WIFI
-            .setNetId(NetworkManager.getInstance().getMobileNetId())
-        InstaCameraManager.getInstance().startLive(builder, this)
-        return true
+
+        //start webrtc live
+        //https://getstream.io/blog/webrtc-on-android/
+
     }
 
     private fun stopLive() {
-        InstaCameraManager.getInstance().stopLive()
+        //stop rtc live
+
+    }
+
+    override fun onVideoData(videoData: VideoData?) {
+        // Callback frequency 500Hz
+        // videoData.timestamp: The time since the camera was turned on
+        // videoData.data: Preview raw stream data every frame
+        // videoData.size: videoData.data.length
+
+        if (videoData != null) {
+            //todo
+            videoData.data
+        }
+
     }
 
     override fun onStop() {
         super.onStop()
         if (isFinishing) {
             // Auto close preview after page loses focus
-            InstaCameraManager.getInstance().stopLive()
+            stopLive()
+            stopLocationUpdates()
             InstaCameraManager.getInstance().closePreviewStream()
             InstaCameraManager.getInstance().setPreviewStatusChangedListener(null)
             mCapturePlayerView.destroy()
@@ -182,6 +194,7 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener, ILiveStatu
             override fun onLoadingFinish() {
                 mBtnSwitchLive.isEnabled = true
                 mBtnSwitchLive.isChecked = true //set to Stop
+                startLocationUpdates()
                 InstaCameraManager.getInstance().setPipeline(mCapturePlayerView.pipeline)
                 exchangeNetToMobileInsta(applicationContext)
             }
@@ -206,38 +219,11 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener, ILiveStatu
             .setBatteryType(InstaCameraManager.getInstance().batteryType)
             .setStabType(InstaStabType.STAB_TYPE_AUTO)
             .setStabEnabled(true)
-            .setLive(true)
             .setResolutionParams(
                 mCurrentResolution!!.width,
                 mCurrentResolution!!.height,
                 mCurrentResolution!!.fps
             )
-    }
-    override fun onIdle() {
-        // Preview Stopped
-        mBtnSwitchLive.isEnabled = false
-        mCapturePlayerView.destroy()
-        mCapturePlayerView.keepScreenOn = false
-    }
-
-    override fun onLivePushStarted() {
-        mTvLiveStatus.setText(R.string.live_push_started)
-        startLocationUpdates()
-    }
-    override fun onLivePushFinished() {
-        mBtnSwitchLive.isChecked = false    //resume
-        mTvLiveStatus.setText(R.string.live_push_finished)
-    }
-
-    @SuppressLint("SetTextI18n")
-    override fun onLivePushError(error : Int, desc : String) {
-        mBtnSwitchLive.isChecked = false    //resume
-        mTvLiveStatus.text = getString(R.string.live_push_error) + " ($error : $desc)"
-        Log.d(tag, getString(R.string.live_push_error) + " ($error : $desc)")
-    }
-
-    override fun onLiveFpsUpdate(fps: Int) {
-        mTvLiveStatus.text = getString(R.string.live_fps_update, fps)
     }
 
     override fun onCameraStatusChanged(enabled: Boolean) {
@@ -249,7 +235,7 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener, ILiveStatu
             if (wifiConnectionDialog.isShowing){
                 wifiConnectionDialog.dismiss()
             }
-            val resolutionList = InstaCameraManager.getInstance().getSupportedPreviewStreamResolution(InstaCameraManager.PREVIEW_TYPE_LIVE)
+            val resolutionList = InstaCameraManager.getInstance().getSupportedPreviewStreamResolution(InstaCameraManager.PREVIEW_TYPE_NORMAL)
             Log.d(tag, resolutionList.toString())
             mCurrentResolution = resolutionList[resolutionList.size-2]
             Log.d(tag, mCurrentResolution.toString())
@@ -265,15 +251,6 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener, ILiveStatu
             "Communication error:$errorCode",
             Toast.LENGTH_SHORT
         ).show()
-    }
-
-    override fun onCameraSDCardStateChanged(enabled: Boolean) {
-        super.onCameraSDCardStateChanged(enabled)
-        if (enabled) {
-            Toast.makeText(this, "SD card enabled", Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(this, "SD card disabled", Toast.LENGTH_SHORT).show()
-        }
     }
 
     private fun hasPermissions(): Boolean {
@@ -350,7 +327,10 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener, ILiveStatu
         }
         if(!grantResults.contains(PackageManager.PERMISSION_DENIED)){
             //permission granted
-            if(ssid.startsWith("X3 ")){
+            if(usb){
+                InstaCameraManager.getInstance().openCamera(InstaCameraManager.CONNECT_TYPE_USB)
+            }
+            else if(ssid.startsWith("X3 ")){
                 InstaCameraManager.getInstance().openCamera(InstaCameraManager.CONNECT_TYPE_WIFI)
             }else{
                 wifiConnectionDialog.show()
@@ -416,7 +396,13 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener, ILiveStatu
         val wifiInfo = wifiManager.connectionInfo
         val ssid = wifiInfo.ssid.replace("\"", "")
 
-        if(ssid.startsWith("X3")){
+        if(usb){
+            InstaCameraManager.getInstance().openCamera(InstaCameraManager.CONNECT_TYPE_USB)
+            if (wifiConnectionDialog.isShowing){
+                wifiConnectionDialog.dismiss()
+            }
+        }
+        else if(ssid.startsWith("X3")){
             InstaCameraManager.getInstance().openCamera(InstaCameraManager.CONNECT_TYPE_WIFI)
             if (wifiConnectionDialog.isShowing){
                 wifiConnectionDialog.dismiss()
@@ -442,7 +428,7 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener, ILiveStatu
         override fun onLocationResult(locationResult: LocationResult) {
             locationResult.lastLocation?.let { location ->
                 // Use location.speed to get the current velocity in meters per second
-                val velocity = location.speed
+                val velocity = location.speed.toInt()
 
                 mTvVelocity.text = velocity.toString()
 

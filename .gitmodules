@@ -1,0 +1,3 @@
+[submodule "android_libwebrtc"]
+	path = android_libwebrtc
+	url = https://github.com/ethand91/android_libwebrtc.git
