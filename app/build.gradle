@@ -1,6 +1,7 @@
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
+    id 'kotlin-kapt'
 }
 
 
@@ -8,10 +9,15 @@ android {
     namespace 'com.example.testapp'
     compileSdk 34
 
+    sourceSets.main {
+        jniLibs.srcDir 'libs'
+        jni.srcDirs = [] //disable automatic ndk-build call
+    }
+
     defaultConfig {
-        applicationId "com.example.testapp"
         minSdk 24
         targetSdk 34
+        applicationId "com.example.testapp"
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
@@ -25,6 +31,9 @@ android {
     buildFeatures {
         viewBinding = true
     }
+    dataBinding {
+        enabled true
+    }
     buildTypes {
         release {
             minifyEnabled false
@@ -32,11 +41,11 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
     kotlinOptions {
-        jvmTarget = '1.8'
+        jvmTarget = '17'
     }
 }
 
@@ -75,11 +84,18 @@ dependencies {
     implementation 'com.google.code.gson:gson:2.8.9'
     implementation 'org.jetbrains.kotlinx:kotlinx-serialization-json:1.3.2'
 
+    //gps
     implementation 'com.google.android.gms:play-services-location:21.0.1'
-    implementation 'com.google.android.gms:play-services-maps:18.1.0'  // If needed for Maps-related functionality
+    implementation 'com.google.android.gms:play-services-maps:18.2.0'  // If needed for Maps-related functionality
 
-    // WebRTC
-    implementation "io.getstream:stream-webrtc-android:1.0.0"
+    //webrtc
+    implementation('io.socket:socket.io-client:1.0.0') {
+        exclude group: 'org.json', module: 'json'
+    }
 
-
+    implementation 'pub.devrel:easypermissions:3.0.0'
+    implementation files('libs/autobanh.jar')
+    implementation files('libs/base_java.jar')
+    implementation files('libs/libjingle_peerconnection.jar')
+    annotationProcessor 'androidx.databinding:databinding-compiler:8.1.2'
 }

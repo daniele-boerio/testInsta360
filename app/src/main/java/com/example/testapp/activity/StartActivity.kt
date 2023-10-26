@@ -22,7 +22,8 @@ class StartActivity : AppCompatActivity() {
             finish()
         }else {
             // User is not logged in, proceed with the login/registration flow
-            val intent = Intent(this, LoginActivity::class.java)
+            //val intent = Intent(this, LoginActivity::class.java)
+            val intent = Intent(this, TestActivity::class.java)
             startActivity(intent)
             finish()
         }
