@@ -89,11 +89,11 @@ dependencies {
     implementation 'com.google.android.gms:play-services-maps:18.2.0'  // If needed for Maps-related functionality
 
     //webrtc
-    implementation('io.socket:socket.io-client:1.0.0') {
+    implementation ('io.socket:socket.io-client:2.1.0') {
+        // excluding org.json which is provided by Android
         exclude group: 'org.json', module: 'json'
     }
 
-    implementation 'pub.devrel:easypermissions:3.0.0'
     implementation files('libs/autobanh.jar')
     implementation files('libs/base_java.jar')
     implementation files('libs/libjingle_peerconnection.jar')

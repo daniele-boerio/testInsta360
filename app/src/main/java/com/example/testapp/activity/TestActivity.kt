@@ -8,13 +8,10 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.arashivision.sdkcamera.camera.InstaCameraManager
 import com.example.testapp.databinding.ActivityTestBinding
-
 import com.example.testapp.observer.SimpleSdpObserver
 import io.socket.client.IO
 import io.socket.client.Socket
-import io.socket.emitter.Emitter
 import org.json.JSONException
 import org.json.JSONObject
 import org.webrtc.AudioSource
@@ -39,7 +36,6 @@ import java.net.URISyntaxException
 
 
 class TestActivity : AppCompatActivity() {
-    private val TAG = "com.example.testapp." + this::class.simpleName
     private val tag = "com.example.testapp." + this::class.simpleName
 
     private val requestCode = 111
@@ -50,20 +46,25 @@ class TestActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityTestBinding
 
-    private var socket: Socket? = null
+    private lateinit var socket: Socket
+    private lateinit var options : IO.Options
+    private val authCode = "tokenDiAuth"
+    private val peerID = android.os.Build.MODEL //todo
+    private val room = "STANZA"
+
     private var isInitiator = false
     private var isChannelReady : Boolean = false
     private var isStarted : Boolean = false
 
 
-    lateinit var audioConstraints: MediaConstraints
-    lateinit var videoConstraints: MediaConstraints
-    lateinit var sdpConstraints: MediaConstraints
-    lateinit var videoSource: VideoSource
-    lateinit var localVideoTrack: VideoTrack
-    lateinit var audioSource: AudioSource
-    lateinit var localAudioTrack: AudioTrack
-    lateinit var surfaceTextureHelper: SurfaceTextureHelper
+    private lateinit var audioConstraints: MediaConstraints
+    private lateinit var videoConstraints: MediaConstraints
+    private lateinit var sdpConstraints: MediaConstraints
+    private lateinit var videoSource: VideoSource
+    private lateinit var localVideoTrack: VideoTrack
+    private lateinit var audioSource: AudioSource
+    private lateinit var localAudioTrack: AudioTrack
+    private lateinit var surfaceTextureHelper: SurfaceTextureHelper
 
     private lateinit var peerConnection: PeerConnection
     private lateinit var rootEglBase: EglBase
@@ -73,13 +74,12 @@ class TestActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityTestBinding.inflate(layoutInflater)
+        setSupportActionBar(binding.toolbar)
         start()
     }
 
     override fun onDestroy() {
-        if (socket != null) {
-            socket!!.disconnect()
-        }
+        socket.disconnect()
         super.onDestroy()
     }
     private fun start() {
@@ -97,146 +97,126 @@ class TestActivity : AppCompatActivity() {
 
     private fun connectToSignallingServer() {
         try {
-            // For me this was "http://192.168.1.220:3000";
-            // $ hostname -I
-            val URL = "http://172.28.158.160:3030/" // "https://calm-badlands-59575.herokuapp.com/";
-            Log.e(TAG, "IO Socket: $URL")
+            val URL = "http://192.168.1.92:3030"
+
             socket = IO.socket(URL)
-            socket!!.on(Socket.EVENT_CONNECT) {
-                Log.d(
-                    TAG,
-                    "connectToSignallingServer: connect"
-                )
-                socket!!.emit("create or join", "cuarto")
-            }.on(
-                "ipaddr"
-            ) { args: Array<Any?>? ->
-                Log.d(
-                    TAG,
-                    "connectToSignallingServer: ipaddr"
-                )
-            }.on(
-                "created"
-            ) { args: Array<Any?>? ->
-                Log.d(
-                    TAG,
-                    "connectToSignallingServer: created"
-                )
+            options = IO.Options.builder()
+                .build()
+
+            /*val URL = "https://develop.ewlab.di.unimi.it/"
+
+            options = IO.Options.builder()
+                .setPath("/telecyclette/socket.io/")
+                .setReconnection(true)
+                .setAuth(mapOf("token" to authCode))
+                .setQuery("peerID=$peerID")
+                .build()*/
+            socket = IO.socket(URL, options)
+
+            Log.e(tag, "IO Socket: $URL")
+            Log.d(tag, "PeerID: $peerID")
+
+
+
+            socket.on(Socket.EVENT_CONNECT) {
+
+                Log.d(tag,"connectToSignallingServer: connect")
+                socket.emit("create or join", room) //todo
+
+            }.on("created") {
+
+                Log.d(tag,"connectToSignallingServer: created")
                 isInitiator = true
-            }.on(
-                "full"
-            ) { args: Array<Any?>? ->
-                Log.d(
-                    TAG,
-                    "connectToSignallingServer: full"
-                )
-            }.on(
-                "join"
-            ) { args: Array<Any?>? ->
-                Log.d(
-                    TAG,
-                    "connectToSignallingServer: join"
-                )
-                Log.d(
-                    TAG,
-                    "connectToSignallingServer: Another peer made a request to join room"
-                )
-                Log.d(
-                    TAG,
-                    "connectToSignallingServer: This peer is the initiator of room"
-                )
+
+            }.on("full") {
+
+                Log.d(tag,"connectToSignallingServer: full")
+
+            }.on("join") {
+
+                Log.d(tag,"connectToSignallingServer: join")
+                Log.d(tag,"connectToSignallingServer: Another peer made a request to join room")
+                Log.d(tag,"connectToSignallingServer: This peer is the initiator of room")
                 isChannelReady = true
-            }.on("joined") { args: Array<Any?>? ->
-                Log.d(
-                    TAG,
-                    "connectToSignallingServer: joined"
-                )
+
+            }.on("joined") {
+
+                Log.d(tag,"connectToSignallingServer: joined")
                 isChannelReady = true
-            }.on(
-                "log"
-            ) { args: Array<Any> ->
+
+            }.on("log") { args: Array<Any> ->
+
                 for (arg in args) {
-                    Log.d(
-                        TAG,
-                        "connectToSignallingServer: $arg"
-                    )
+                    Log.d(tag,"connectToSignallingServer: $arg")
                 }
-            }.on(
-                "message"
-            ) { args: Array<Any?>? ->
-                Log.d(
-                    TAG,
-                    "connectToSignallingServer: got a message"
-                )
-            }.on(
-                "message"
-            ) { args: Array<Any> ->
+
+            }.on("message") {
+
+                Log.d(tag,"connectToSignallingServer: got a message")
+
+            }.on("message") { args: Array<Any> ->
+
                 try {
-                    if (args[0] is String) {
-                        val message = args[0] as String
-                        if (message == "got user media") {
+                    val message = args[0] as JSONObject
+                    Log.d(
+                        tag,
+                        "connectToSignallingServer: got message $message"
+                    )
+                    if (message.getString("type") == "media") {
+                        maybeStart()
+                    }
+                    else if (message.getString("type") == "offer") {
+                        Log.d(
+                            tag,
+                            "connectToSignallingServer: received an offer $isInitiator $isStarted"
+                        )
+                        if (!isInitiator && !isStarted) {
                             maybeStart()
                         }
-                    } else {
-                        val message = args[0] as JSONObject
-                        Log.d(
-                            TAG,
-                            "connectToSignallingServer: got message $message"
+                        peerConnection.setRemoteDescription(
+                            SimpleSdpObserver(),
+                            SessionDescription(
+                                SessionDescription.Type.OFFER,
+                                message.getString("sdp")
+                            )
                         )
-                        if (message.getString("type") == "offer") {
-                            Log.d(
-                                TAG,
-                                "connectToSignallingServer: received an offer $isInitiator $isStarted"
+                        doAnswer()
+                    } else if (message.getString("type") == "answer" && isStarted) {
+                        peerConnection.setRemoteDescription(
+                            SimpleSdpObserver(),
+                            SessionDescription(
+                                SessionDescription.Type.ANSWER,
+                                message.getString("sdp")
                             )
-                            if (!isInitiator && !isStarted) {
-                                maybeStart()
-                            }
-                            peerConnection.setRemoteDescription(
-                                SimpleSdpObserver(),
-                                SessionDescription(
-                                    SessionDescription.Type.OFFER,
-                                    message.getString("sdp")
-                                )
-                            )
-                            doAnswer()
-                        } else if (message.getString("type") == "answer" && isStarted) {
-                            peerConnection.setRemoteDescription(
-                                SimpleSdpObserver(),
-                                SessionDescription(
-                                    SessionDescription.Type.ANSWER,
-                                    message.getString("sdp")
-                                )
-                            )
-                        } else if (message.getString("type") == "candidate" && isStarted) {
-                            Log.d(
-                                TAG,
-                                "connectToSignallingServer: receiving candidates"
-                            )
-                            val candidate = IceCandidate(
-                                message.getString("id"),
-                                message.getInt("label"),
-                                message.getString("candidate")
-                            )
-                            peerConnection.addIceCandidate(candidate)
-                        }
-                        /*else if (message === 'bye' && isStarted) {
-        handleRemoteHangup();
-    }*/
+                        )
+                    } else if (message.getString("type") == "candidate" && isStarted) {
+                        Log.d(
+                            tag,
+                            "connectToSignallingServer: receiving candidates"
+                        )
+                        val candidate = IceCandidate(
+                            message.getString("id"),
+                            message.getInt("label"),
+                            message.getString("candidate")
+                        )
+                        peerConnection.addIceCandidate(candidate)
                     }
                 } catch (e: JSONException) {
                     e.printStackTrace()
+                    Log.e(tag, e.toString())
                 }
             }.on(
                 Socket.EVENT_DISCONNECT
-            ) { args: Array<Any?>? ->
+            ) {
                 Log.d(
-                    TAG,
+                    tag,
                     "connectToSignallingServer: disconnect"
                 )
             }
-            socket!!.connect()
+            socket.connect()
         } catch (e: URISyntaxException) {
             e.printStackTrace()
+            Log.e(tag, e.toString())
         }
     }
 
@@ -248,17 +228,19 @@ class TestActivity : AppCompatActivity() {
                 val message = JSONObject()
                 try {
                     message.put("type", "answer")
+                    message.put("room", room)
                     message.put("sdp", sessionDescription.description)
                     sendMessage(message)
                 } catch (e: JSONException) {
                     e.printStackTrace()
+                    Log.e(tag, e.toString())
                 }
             }
         }, MediaConstraints())
     }
 
     private fun maybeStart() {
-        Log.d(TAG, "maybeStart: $isStarted $isChannelReady")
+        Log.d(tag, "maybeStart: $isStarted $isChannelReady")
         if (!isStarted && isChannelReady) {
             isStarted = true
             if (isInitiator) {
@@ -270,37 +252,39 @@ class TestActivity : AppCompatActivity() {
     private fun doCall() {
         val sdpMediaConstraints = MediaConstraints()
         sdpMediaConstraints.mandatory.add(
-            org.webrtc.MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true")
+            MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true")
         )
         sdpMediaConstraints.mandatory.add(
-            org.webrtc.MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true")
+            MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true")
         )
         peerConnection.createOffer(object : SimpleSdpObserver() {
             override fun onCreateSuccess(sessionDescription: SessionDescription) {
-                Log.d(TAG, "onCreateSuccess: ")
+                Log.d(tag, "onCreateSuccess: ")
                 peerConnection.setLocalDescription(SimpleSdpObserver(), sessionDescription)
                 val message = JSONObject()
                 try {
                     message.put("type", "offer")
+                    message.put("room", room)
                     message.put("sdp", sessionDescription.description)
                     sendMessage(message)
                 } catch (e: JSONException) {
                     e.printStackTrace()
+                    Log.e(tag, e.toString())
                 }
             }
         }, sdpMediaConstraints)
     }
 
     private fun sendMessage(message: Any) {
-        socket!!.emit("message", message)
+        socket.emit("message", message)
     }
 
     private fun initializeSurfaceViews() {
         rootEglBase = EglBase.create()
-        binding.surfaceView.init(rootEglBase.getEglBaseContext(), null)
+        binding.surfaceView.init(rootEglBase.eglBaseContext, null)
         binding.surfaceView.setEnableHardwareScaler(true)
         binding.surfaceView.setMirror(true)
-        binding.surfaceView2.init(rootEglBase.getEglBaseContext(), null)
+        binding.surfaceView2.init(rootEglBase.eglBaseContext, null)
         binding.surfaceView2.setEnableHardwareScaler(true)
         binding.surfaceView2.setMirror(true)
 
@@ -320,7 +304,7 @@ class TestActivity : AppCompatActivity() {
     private fun createVideoTrackFromCameraAndShowIt() {
         audioConstraints = MediaConstraints()
         val videoCapturer: VideoCapturer? = createVideoCapturer()
-        val videoSource: org.webrtc.VideoSource = factory.createVideoSource(videoCapturer)
+        val videoSource: VideoSource = factory.createVideoSource(videoCapturer)
         videoCapturer!!.startCapture(VIDEO_RESOLUTION_WIDTH, VIDEO_RESOLUTION_HEIGHT, FPS)
         videoTrackFromCamera = factory.createVideoTrack(VIDEO_TRACK_ID, videoSource)
         videoTrackFromCamera.setEnabled(true)
@@ -340,11 +324,23 @@ class TestActivity : AppCompatActivity() {
         mediaStream.addTrack(videoTrackFromCamera)
         mediaStream.addTrack(localAudioTrack)
         peerConnection.addStream(mediaStream)
-        sendMessage("got user media")
+        val message = JSONObject()
+        try {
+            message.put("type", "media")
+            message.put("room", room)
+            Log.d(
+                tag,
+                "startStreamingVideo: sending data $message"
+            )
+            sendMessage(message)
+        }catch (e: JSONException) {
+            e.printStackTrace()
+            Log.e(tag, e.toString())
+        }
     }
 
     private fun createPeerConnection(factory: PeerConnectionFactory?): PeerConnection? {
-        val iceServers: ArrayList<PeerConnection.IceServer> = ArrayList<PeerConnection.IceServer>()
+        val iceServers: ArrayList<PeerConnection.IceServer> = ArrayList()
         val URL = "stun:stun.l.google.com:19302"
         iceServers.add(PeerConnection.IceServer(URL))
         val rtcConfig = PeerConnection.RTCConfiguration(iceServers)
@@ -352,70 +348,71 @@ class TestActivity : AppCompatActivity() {
         val pcObserver: PeerConnection.Observer =
             object : PeerConnection.Observer {
                 override fun onSignalingChange(signalingState: PeerConnection.SignalingState) {
-                    Log.d(TAG, "onSignalingChange: ")
+                    Log.d(tag, "onSignalingChange: ")
                 }
 
                 override fun onIceConnectionChange(iceConnectionState: PeerConnection.IceConnectionState) {
-                    Log.d(TAG, "onIceConnectionChange: ")
+                    Log.d(tag, "onIceConnectionChange: ")
                 }
 
                 override fun onIceConnectionReceivingChange(b: Boolean) {
-                    Log.d(TAG, "onIceConnectionReceivingChange: ")
+                    Log.d(tag, "onIceConnectionReceivingChange: ")
                 }
 
                 override fun onIceGatheringChange(iceGatheringState: PeerConnection.IceGatheringState) {
-                    Log.d(TAG, "onIceGatheringChange: ")
+                    Log.d(tag, "onIceGatheringChange: ")
                 }
 
                 override fun onIceCandidate(iceCandidate: IceCandidate) {
-                    Log.d(TAG, "onIceCandidate: ")
+                    Log.d(tag, "onIceCandidate: ")
                     val message = JSONObject()
                     try {
                         message.put("type", "candidate")
+                        message.put("room", room)
                         message.put("label", iceCandidate.sdpMLineIndex)
                         message.put("id", iceCandidate.sdpMid)
                         message.put("candidate", iceCandidate.sdp)
                         Log.d(
-                            TAG,
+                            tag,
                             "onIceCandidate: sending candidate $message"
                         )
                         sendMessage(message)
                     } catch (e: JSONException) {
                         e.printStackTrace()
+                        Log.e(tag, e.toString())
                     }
                 }
 
                 override fun onIceCandidatesRemoved(iceCandidates: Array<IceCandidate>) {
-                    Log.d(TAG, "onIceCandidatesRemoved: ")
+                    Log.d(tag, "onIceCandidatesRemoved: ")
                 }
 
                 override fun onAddStream(mediaStream: MediaStream) {
-                    Log.d(TAG, "onAddStream: " + mediaStream.videoTracks.size)
-                    val remoteVideoTrack: VideoTrack = mediaStream.videoTracks.get(0)
-                    val remoteAudioTrack: org.webrtc.AudioTrack = mediaStream.audioTracks.get(0)
+                    Log.d(tag, "onAddStream: " + mediaStream.videoTracks.size)
+                    val remoteVideoTrack: VideoTrack = mediaStream.videoTracks[0]
+                    val remoteAudioTrack: org.webrtc.AudioTrack = mediaStream.audioTracks[0]
                     remoteAudioTrack.setEnabled(true)
                     remoteVideoTrack.setEnabled(true)
                     remoteVideoTrack.addRenderer(VideoRenderer(binding.surfaceView2))
                 }
 
                 override fun onRemoveStream(mediaStream: MediaStream) {
-                    Log.d(TAG, "onRemoveStream: ")
+                    Log.d(tag, "onRemoveStream: ")
                 }
 
                 override fun onDataChannel(dataChannel: DataChannel) {
-                    Log.d(TAG, "onDataChannel: ")
+                    Log.d(tag, "onDataChannel: ")
                 }
 
                 override fun onRenegotiationNeeded() {
-                    Log.d(TAG, "onRenegotiationNeeded: ")
+                    Log.d(tag, "onRenegotiationNeeded: ")
                 }
             }
         return factory!!.createPeerConnection(rtcConfig, pcConstraints, pcObserver)
     }
 
     private fun createVideoCapturer(): VideoCapturer? {
-        val videoCapturer: VideoCapturer?
-        videoCapturer = if (useCamera2()) {
+        val videoCapturer: VideoCapturer? = if (useCamera2()) {
             createCameraCapturer(Camera2Enumerator(this))
         } else {
             createCameraCapturer(Camera1Enumerator(true))
@@ -424,21 +421,15 @@ class TestActivity : AppCompatActivity() {
     }
 
     private fun createCameraCapturer(enumerator: CameraEnumerator): VideoCapturer? {
-        val deviceNames: Array<String> = enumerator.getDeviceNames()
+        val deviceNames: Array<String> = enumerator.deviceNames
         for (deviceName in deviceNames) {
             if (enumerator.isFrontFacing(deviceName)) {
-                val videoCapturer: VideoCapturer = enumerator.createCapturer(deviceName, null)
-                if (videoCapturer != null) {
-                    return videoCapturer
-                }
+                return enumerator.createCapturer(deviceName, null)
             }
         }
         for (deviceName in deviceNames) {
             if (!enumerator.isFrontFacing(deviceName)) {
-                val videoCapturer: VideoCapturer = enumerator.createCapturer(deviceName, null)
-                if (videoCapturer != null) {
-                    return videoCapturer
-                }
+                return enumerator.createCapturer(deviceName, null)
             }
         }
         return null
@@ -456,10 +447,38 @@ class TestActivity : AppCompatActivity() {
             this, Manifest.permission.RECORD_AUDIO
         )
 
+        val internetPermission = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.INTERNET
+        )
+        val accessNetworkStatePermission = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.ACCESS_NETWORK_STATE
+        )
+        val changeNetworkStatePermission = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.CHANGE_NETWORK_STATE
+        )
+        val accessFineLocationPermission = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.ACCESS_FINE_LOCATION
+        )
+        val accessCoarseLocationPermission = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.ACCESS_COARSE_LOCATION
+        )
+        val changeWifiStatePermission = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.CHANGE_WIFI_STATE
+        )
+        val accessWifiStatePermission = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.ACCESS_WIFI_STATE
+        )
 
         // Return true only if both permissions are granted
         return cameraPermission == PackageManager.PERMISSION_GRANTED &&
-                audioPermission == PackageManager.PERMISSION_GRANTED
+               audioPermission == PackageManager.PERMISSION_GRANTED &&
+                internetPermission == PackageManager.PERMISSION_GRANTED &&
+                accessNetworkStatePermission == PackageManager.PERMISSION_GRANTED &&
+                changeNetworkStatePermission == PackageManager.PERMISSION_GRANTED &&
+                accessFineLocationPermission == PackageManager.PERMISSION_GRANTED &&
+                accessCoarseLocationPermission == PackageManager.PERMISSION_GRANTED &&
+                changeWifiStatePermission == PackageManager.PERMISSION_GRANTED &&
+                accessWifiStatePermission == PackageManager.PERMISSION_GRANTED
     }
 
     private fun requestPermissions() {
@@ -467,7 +486,14 @@ class TestActivity : AppCompatActivity() {
             this,
             arrayOf(
                 Manifest.permission.CAMERA,
-                Manifest.permission.RECORD_AUDIO
+                Manifest.permission.RECORD_AUDIO,
+                Manifest.permission.INTERNET,
+                Manifest.permission.ACCESS_NETWORK_STATE,
+                Manifest.permission.CHANGE_NETWORK_STATE,
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+                Manifest.permission.CHANGE_WIFI_STATE,
+                Manifest.permission.ACCESS_WIFI_STATE
             ),
             requestCode
         )
