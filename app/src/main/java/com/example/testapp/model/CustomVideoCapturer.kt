@@ -24,7 +24,7 @@ class CustomVideoCapturer() : VideoCapturer {
         this.context = context
         this.capturerObserver = capturerObserver
     }
-    fun addVideoData(timestamp: Long, rawVideoData: ByteArray) {
+    fun addVideoData(timestamp: Long, rawVideoData: ByteArray) {    //rawVideoData is codec: h264 or h265 and yuvj420p
 
         // Your NV21 video frame data as a ByteArray
         val nv21Data: ByteArray = rawVideoData
