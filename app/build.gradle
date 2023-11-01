@@ -10,16 +10,17 @@ android {
     compileSdk 34
 
     sourceSets.main {
-        jniLibs.srcDir 'libs'
-        jni.srcDirs = [] //disable automatic ndk-build call
+        //jniLibs.srcDir 'libs/vecchie'
+        jniLibs.srcDir 'libs/nuove'
     }
 
     defaultConfig {
+        applicationId "com.example.testapp"
         minSdk 24
         targetSdk 34
-        applicationId "com.example.testapp"
         versionCode 1
         versionName "1.0"
+
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             // 32位lib库（armeabi-v7a）已不再维护，请使用64位lib库（arm64-v8a）编译
@@ -30,9 +31,7 @@ android {
     }
     buildFeatures {
         viewBinding = true
-    }
-    dataBinding {
-        enabled true
+        dataBinding = true
     }
     buildTypes {
         release {
@@ -71,8 +70,7 @@ dependencies {
 
     // ViewModel
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:$lifecycle_version")
-    // ViewModel utilities for Compose
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:$lifecycle_version")
+
     // LiveData
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycle_version")
 
@@ -81,7 +79,7 @@ dependencies {
 
     //http request
     implementation 'com.squareup.okhttp3:okhttp:4.10.0'
-    implementation 'com.google.code.gson:gson:2.8.9'
+    implementation 'com.google.code.gson:gson:2.9.0'
     implementation 'org.jetbrains.kotlinx:kotlinx-serialization-json:1.3.2'
 
     //gps
@@ -94,8 +92,5 @@ dependencies {
         exclude group: 'org.json', module: 'json'
     }
 
-    implementation files('libs/autobanh.jar')
-    implementation files('libs/base_java.jar')
-    implementation files('libs/libjingle_peerconnection.jar')
-    annotationProcessor 'androidx.databinding:databinding-compiler:8.1.2'
+    implementation files("libs/nuove/libwebrtc.jar")
 }

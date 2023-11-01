@@ -32,10 +32,10 @@
 
         <ToggleButton
             android:id="@+id/btn_switch_live"
+            style="?android:attr/buttonBarButtonStyle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textOff="@string/button_resume_live"
-            android:textOn="@string/button_stop_live"
-            style="?android:attr/buttonBarButtonStyle" />
+            android:textOn="@string/button_stop_live" />
     </LinearLayout>
 </FrameLayout>

@@ -30,34 +30,93 @@ import com.arashivision.sdkmedia.player.listener.PlayerViewListener
 import com.example.testapp.R
 import com.example.testapp.databinding.ActivityLiveBinding
 import com.example.testapp.dialog.WIFIConnectionDialog
+import com.example.testapp.model.CustomVideoCapturer
 import com.example.testapp.observer.ObserveCameraActivity
+import com.example.testapp.observer.SimpleSdpObserver
 import com.example.testapp.utils.NetworkManager
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
+import io.socket.client.IO
+import io.socket.client.Socket
+import org.json.JSONException
+import org.json.JSONObject
+import org.webrtc.AudioSource
+import org.webrtc.AudioTrack
+import org.webrtc.DataChannel
+import org.webrtc.DefaultVideoDecoderFactory
+import org.webrtc.DefaultVideoEncoderFactory
+import org.webrtc.EglBase
+import org.webrtc.IceCandidate
+import org.webrtc.MediaConstraints
+import org.webrtc.MediaStream
+import org.webrtc.PeerConnection
+import org.webrtc.PeerConnectionFactory
+import org.webrtc.RtpTransceiver
+import org.webrtc.SessionDescription
+import org.webrtc.SurfaceTextureHelper
+import org.webrtc.VideoSource
+import org.webrtc.VideoTrack
+import java.net.URISyntaxException
 
 
 class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener {
     private val tag = "com.example.testapp." + this::class.simpleName
-    private lateinit var binding : ActivityLiveBinding
-    private lateinit var mTvLiveStatus : TextView
-    private lateinit var mTvVelocity : TextView
-    private lateinit var mBtnSwitchLive: ToggleButton
-    private lateinit var mCapturePlayerView: InstaCapturePlayerView
-    private var mCurrentResolution: PreviewStreamResolution? = null
-    private lateinit var userid : String
-    private lateinit var ipaddress : String
-    private lateinit var port : String
-    private val requestCode = 123 // You can use any integer value
-    private lateinit var wifiConnectionDialog: WIFIConnectionDialog
-    private lateinit var ssid : String
-    private lateinit var fusedLocationClient: FusedLocationProviderClient
-    private val signalingServerURL = "" //todo
-
 
     private val usb = false //test connection with usb
+
+    private val urlSignalingServer = "https://develop.ewlab.di.unimi.it/"
+
+    private val urlStunServer = "stun:stun.l.google.com:19302"
+
+    private val authCode = "tokenDiAuth"    //todo
+    private val peerID = android.os.Build.MODEL //todo
+    private val room = "STANZA" //todo
+
+    private val VIDEO_TRACK_ID = "ARDAMSv0"
+    private val AUDIO_TRACK_ID = "ARDAMSa0"
+
+    private lateinit var mTvLiveStatus: TextView
+    private lateinit var mTvVelocity: TextView
+    private lateinit var mBtnSwitchLive: ToggleButton
+    private lateinit var mCapturePlayerView: InstaCapturePlayerView
+
+    private var mCurrentResolution: PreviewStreamResolution? = null
+
+    private lateinit var userid: String
+    private lateinit var ipaddress: String
+    private lateinit var port: String
+
+    private lateinit var wifiConnectionDialog: WIFIConnectionDialog
+    private lateinit var ssid: String
+    private lateinit var fusedLocationClient: FusedLocationProviderClient
+
+    private val requestCode = 123 // You can use any integer value
+
+    private lateinit var binding: ActivityLiveBinding
+
+    //webrtc variables
+    private lateinit var socket: Socket
+    private lateinit var options : IO.Options
+
+    private var isInitiator = false
+    private var isChannelReady : Boolean = false
+    private var isStarted : Boolean = false
+
+    private lateinit var audioConstraints: MediaConstraints
+    private lateinit var videoSource: VideoSource
+    private lateinit var audioSource: AudioSource
+    private lateinit var localAudioTrack: AudioTrack
+    private lateinit var surfaceTextureHelper: SurfaceTextureHelper
+
+    private lateinit var peerConnection: PeerConnection
+    private lateinit var rootEglBase: EglBase
+    private lateinit var factory: PeerConnectionFactory
+    private lateinit var videoTrackFromCamera360: VideoTrack
+
+    private lateinit var customVideoCapturer : CustomVideoCapturer
 
 
 
@@ -87,20 +146,20 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener {
         val wifiInfo = wifiManager.connectionInfo
         ssid = wifiInfo.ssid.replace("\"", "")
 
-        if(!hasPermissions()){
+        if (!hasPermissions()) {
             requestPermissions()
-        }else{
+        } else {
             if (usb) {
                 InstaCameraManager.getInstance().openCamera(InstaCameraManager.CONNECT_TYPE_USB)
-            }
-            else if(ssid.startsWith("X3 ")){
+            } else if (ssid.startsWith("X3 ")) {
                 InstaCameraManager.getInstance().openCamera(InstaCameraManager.CONNECT_TYPE_WIFI)
-            }else{
+            } else {
                 wifiConnectionDialog.show()
             }
             bindViews()
         }
     }
+
 
     private fun bindViews() {
         mCapturePlayerView = binding.playerCapture
@@ -112,17 +171,17 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener {
         //until preview is running the live button is disabled
         mBtnSwitchLive.isEnabled = false
 
-        mBtnSwitchLive.setOnClickListener{
-            if(mBtnSwitchLive.isChecked){
+        mBtnSwitchLive.setOnClickListener {
+            if (mBtnSwitchLive.isChecked) {
                 mBtnSwitchLive.isChecked = true   //set to stop
 
                 //use mobile network for streaming
-                if (NetworkManager.getInstance().isBindingMobileNetwork()){
+                if (NetworkManager.getInstance().isBindingMobileNetwork()) {
                     checkToStartLive()
-                }else{
+                } else {
                     exchangeNetToMobileInsta(this.applicationContext)
                 }
-            }else{
+            } else {
                 mBtnSwitchLive.isChecked = false  //set to resume
                 stopLive()
                 stopLocationUpdates()
@@ -142,23 +201,17 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener {
 
 
     private fun checkToStartLive() {
-        //todo
-        val ip = "rtmp://develop.ewlab.di.unimi.it:3027/serverRTMP/mystream"
-        //rtmp://develop.ewlab.di.unimi.it:3027/serverRTMP/mystream
-        //rtmp://$ipaddress:$port/serverRTMP/mystream
-        Log.d(tag, "$ipaddress:$port")
-        val width = mCurrentResolution!!.width
-        val height = mCurrentResolution!!.height
-        val fps = mCurrentResolution!!.fps
-
-        //start webrtc live
-        //https://getstream.io/blog/webrtc-on-android/
-
+        connectToSignallingServer()
+        createVideoTrackFromInsta360()
+        initializePeerConnections()
     }
 
     private fun stopLive() {
         //stop rtc live
-
+        socket.disconnect()
+        peerConnection.dispose()
+        factory.dispose()
+        customVideoCapturer.stopCapture()
     }
 
     override fun onVideoData(videoData: VideoData?) {
@@ -168,10 +221,8 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener {
         // videoData.size: videoData.data.length
 
         if (videoData != null) {
-            //todo
-            videoData.data
+            customVideoCapturer.addVideoData(videoData.timestamp, videoData.data)
         }
-
     }
 
     override fun onStop() {
@@ -231,14 +282,18 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener {
         if (!enabled) {
             mBtnSwitchLive.isChecked = false    //resume
             mBtnSwitchLive.isEnabled = false
-        }else{
-            if (wifiConnectionDialog.isShowing){
+        } else {
+            if (wifiConnectionDialog.isShowing) {
                 wifiConnectionDialog.dismiss()
             }
-            val resolutionList = InstaCameraManager.getInstance().getSupportedPreviewStreamResolution(InstaCameraManager.PREVIEW_TYPE_NORMAL)
+            val resolutionList = InstaCameraManager.getInstance()
+                .getSupportedPreviewStreamResolution(InstaCameraManager.PREVIEW_TYPE_NORMAL)
             Log.d(tag, resolutionList.toString())
-            mCurrentResolution = resolutionList[resolutionList.size-2]
+            mCurrentResolution = resolutionList[resolutionList.size - 2]
             Log.d(tag, mCurrentResolution.toString())
+
+            initializewebrtc()
+
             InstaCameraManager.getInstance().setPreviewStatusChangedListener(this)
             restartPreview()
         }
@@ -275,6 +330,12 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener {
         val accessWifiStatePermission = ContextCompat.checkSelfPermission(
             this, Manifest.permission.ACCESS_WIFI_STATE
         )
+        val cameraPermission = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.CAMERA
+        )
+        val audioPermission = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.RECORD_AUDIO
+        )
 
         // Return true only if both permissions are granted
         return internetPermission == PackageManager.PERMISSION_GRANTED &&
@@ -283,7 +344,9 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener {
                 accessFineLocationPermission == PackageManager.PERMISSION_GRANTED &&
                 accessCoarseLocationPermission == PackageManager.PERMISSION_GRANTED &&
                 changeWifiStatePermission == PackageManager.PERMISSION_GRANTED &&
-                accessWifiStatePermission == PackageManager.PERMISSION_GRANTED
+                accessWifiStatePermission == PackageManager.PERMISSION_GRANTED &&
+                cameraPermission == PackageManager.PERMISSION_GRANTED &&
+                audioPermission == PackageManager.PERMISSION_GRANTED
     }
 
     private fun requestPermissions() {
@@ -296,11 +359,14 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener {
                 Manifest.permission.ACCESS_FINE_LOCATION,
                 Manifest.permission.ACCESS_COARSE_LOCATION,
                 Manifest.permission.CHANGE_WIFI_STATE,
-                Manifest.permission.ACCESS_WIFI_STATE
+                Manifest.permission.ACCESS_WIFI_STATE,
+                Manifest.permission.CAMERA,
+                Manifest.permission.RECORD_AUDIO
             ),
             requestCode
         )
     }
+
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
@@ -325,20 +391,19 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener {
                 }
             }
         }
-        if(!grantResults.contains(PackageManager.PERMISSION_DENIED)){
+        if (!grantResults.contains(PackageManager.PERMISSION_DENIED)) {
             //permission granted
-            if(usb){
+            if (usb) {
                 InstaCameraManager.getInstance().openCamera(InstaCameraManager.CONNECT_TYPE_USB)
-            }
-            else if(ssid.startsWith("X3 ")){
+            } else if (ssid.startsWith("X3 ")) {
                 InstaCameraManager.getInstance().openCamera(InstaCameraManager.CONNECT_TYPE_WIFI)
-            }else{
+            } else {
                 wifiConnectionDialog.show()
             }
             bindViews()
-        }else{
+        } else {
             //permission denied
-            Toast.makeText(this, "Permission are required" , Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Permission are required", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -347,47 +412,63 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener {
         if (NetworkManager.getInstance().isBindingMobileNetwork()) {
             return
         }
-        val connManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val connManager =
+            context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val networks = connManager.allNetworks
         for (network in networks) {
             val networkInfo = connManager.getNetworkInfo(network)
             if (networkInfo != null && networkInfo.type == ConnectivityManager.TYPE_WIFI) {
                 // Need to set network Id of current wifi to camera
-                InstaCameraManager.getInstance().setNetIdToCamera(NetworkManager.getInstance().getNetworkId(network!!))
+                InstaCameraManager.getInstance()
+                    .setNetIdToCamera(NetworkManager.getInstance().getNetworkId(network!!))
             }
         }
         val request = NetworkRequest.Builder()
             .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
             .build()
-        NetworkManager.getInstance().mNetworkCallback = object : ConnectivityManager.NetworkCallback() {
-            @SuppressLint("SuspiciousIndentation")
-            override fun onAvailable(network: Network) {
-                super.onAvailable(network)
-                val bindSuccessful: Boolean =
+        NetworkManager.getInstance().mNetworkCallback =
+            object : ConnectivityManager.NetworkCallback() {
+                @SuppressLint("SuspiciousIndentation")
+                override fun onAvailable(network: Network) {
+                    super.onAvailable(network)
+                    val bindSuccessful: Boolean =
+                        connManager.bindProcessToNetwork(null)
+                    connManager.bindProcessToNetwork(network)
+                    // Record the bound mobile network ID
+                    NetworkManager.getInstance().mMobileNetId =
+                        NetworkManager.getInstance().getNetworkId(network)
+                    if (bindSuccessful) {
+                        Log.d(
+                            tag,
+                            context.getString(R.string.live_toast_bind_mobile_network_successful)
+                        )
+                        //binding is successful so check to start the live
+                        checkToStartLive()
+
+                    } else {
+                        Log.d(
+                            tag,
+                            context.getString(R.string.live_toast_bind_mobile_network_failed)
+                        )
+
+                    }
+                }
+
+                override fun onLost(network: Network) {
+                    super.onLost(network)
+                    // The mobile network is suddenly unavailable, need to temporarily unbind and wait for the network to recover again
                     connManager.bindProcessToNetwork(null)
-                connManager.bindProcessToNetwork(network)
-                // Record the bound mobile network ID
-                NetworkManager.getInstance().mMobileNetId = NetworkManager.getInstance().getNetworkId(network)
-                if (bindSuccessful) {
-                    Log.d(tag, context.getString(R.string.live_toast_bind_mobile_network_successful))
-                    //binding is successful so check to start the live
-                    checkToStartLive()
-
-                } else {
-                    Log.d(tag, context.getString(R.string.live_toast_bind_mobile_network_failed))
-
+                    Log.d(
+                        tag,
+                        context.getString(R.string.live_toast_unbind_mobile_network_when_lost)
+                    )
                 }
             }
-
-            override fun onLost(network: Network) {
-                super.onLost(network)
-                // The mobile network is suddenly unavailable, need to temporarily unbind and wait for the network to recover again
-                connManager.bindProcessToNetwork(null)
-                Log.d(tag, context.getString(R.string.live_toast_unbind_mobile_network_when_lost))
-            }
-        }
-        connManager.requestNetwork(request, NetworkManager.getInstance().mNetworkCallback as ConnectivityManager.NetworkCallback)
+        connManager.requestNetwork(
+            request,
+            NetworkManager.getInstance().mNetworkCallback as ConnectivityManager.NetworkCallback
+        )
     }
 
     override fun onResume() {
@@ -396,15 +477,14 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener {
         val wifiInfo = wifiManager.connectionInfo
         val ssid = wifiInfo.ssid.replace("\"", "")
 
-        if(usb){
+        if (usb) {
             InstaCameraManager.getInstance().openCamera(InstaCameraManager.CONNECT_TYPE_USB)
-            if (wifiConnectionDialog.isShowing){
+            if (wifiConnectionDialog.isShowing) {
                 wifiConnectionDialog.dismiss()
             }
-        }
-        else if(ssid.startsWith("X3")){
+        } else if (ssid.startsWith("X3")) {
             InstaCameraManager.getInstance().openCamera(InstaCameraManager.CONNECT_TYPE_WIFI)
-            if (wifiConnectionDialog.isShowing){
+            if (wifiConnectionDialog.isShowing) {
                 wifiConnectionDialog.dismiss()
             }
         }
@@ -424,6 +504,7 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener {
     private fun stopLocationUpdates() {
         fusedLocationClient.removeLocationUpdates(locationCallback)
     }
+
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(locationResult: LocationResult) {
             locationResult.lastLocation?.let { location ->
@@ -436,4 +517,328 @@ class LiveActivity : ObserveCameraActivity(), IPreviewStatusListener {
         }
     }
 
+
+    //webrtc
+    private fun connectToSignallingServer() {
+        try {
+            options = IO.Options.builder()
+                .setPath("/telecyclette/socket.io/")
+                .setReconnection(true)
+                .setAuth(mapOf("token" to authCode))
+                .setQuery("peerID=$peerID")
+                .build()
+            socket = IO.socket(urlSignalingServer, options)
+
+            Log.e(tag, "IO Socket: $urlSignalingServer")
+            Log.d(tag, "PeerID: $peerID")
+
+
+
+            socket.on(Socket.EVENT_CONNECT) {
+
+                Log.d(tag,"connectToSignallingServer: connect")
+                socket.emit("create or join", room)
+
+            }.on("created") {
+
+                Log.d(tag,"connectToSignallingServer: created")
+                isInitiator = true
+
+            }.on("full") {
+
+                Log.d(tag,"connectToSignallingServer: full")
+
+            }.on("join") {
+
+                Log.d(tag,"connectToSignallingServer: join")
+                Log.d(tag,"connectToSignallingServer: Another peer made a request to join room")
+                Log.d(tag,"connectToSignallingServer: This peer is the initiator of room")
+                isChannelReady = true
+                startStreamingVideo()
+
+            }.on("joined") {
+
+                Log.d(tag,"connectToSignallingServer: joined")
+                isChannelReady = true
+
+            }.on("log") { args: Array<Any> ->
+
+                for (arg in args) {
+                    Log.d(tag,"connectToSignallingServer: $arg")
+                }
+
+            }.on("message") { args: Array<Any> ->
+
+                try {
+                    val message = args[0] as JSONObject
+                    Log.d(
+                        tag,
+                        "connectToSignallingServer: got message $message"
+                    )
+                    if (message.getString("type") == "got user media") {
+                        maybeStart()
+                    }
+                    else if (message.getString("type") == "offer") {
+                        Log.d(
+                            tag,
+                            "connectToSignallingServer: received an offer $isInitiator $isStarted"
+                        )
+                        if (!isInitiator && !isStarted) {
+                            maybeStart()
+                        }
+                        peerConnection.setRemoteDescription(
+                            SimpleSdpObserver(),
+                            SessionDescription(
+                                SessionDescription.Type.OFFER,
+                                message.getString("sdp")
+                            )
+                        )
+                        doAnswer()
+                    } else if (message.getString("type") == "answer" && isStarted) {
+                        peerConnection.setRemoteDescription(
+                            SimpleSdpObserver(),
+                            SessionDescription(
+                                SessionDescription.Type.ANSWER,
+                                message.getString("sdp")
+                            )
+                        )
+                    } else if (message.getString("type") == "candidate" && isStarted) {
+                        Log.d(
+                            tag,
+                            "connectToSignallingServer: receiving candidates"
+                        )
+                        val candidate = IceCandidate(
+                            message.getString("id"),
+                            message.getInt("label"),
+                            message.getString("candidate")
+                        )
+                        peerConnection.addIceCandidate(candidate)
+                    }
+                } catch (e: JSONException) {
+                    e.printStackTrace()
+                    Log.e(tag, e.toString())
+                }
+            }.on(
+                Socket.EVENT_DISCONNECT
+            ) {
+                Log.d(
+                    tag,
+                    "connectToSignallingServer: disconnect"
+                )
+            }
+            socket.connect()
+        } catch (e: URISyntaxException) {
+            e.printStackTrace()
+            Log.e(tag, e.toString())
+        }
+    }
+
+    private fun doAnswer() {
+        peerConnection.createAnswer(object : SimpleSdpObserver() {
+            override fun onCreateSuccess(sessionDescription: SessionDescription) {
+                peerConnection.setLocalDescription(SimpleSdpObserver(), sessionDescription)
+                val message = JSONObject()
+                try {
+                    message.put("type", "answer")
+                    message.put("room", room)
+                    message.put("sdp", sessionDescription.description)
+                    sendMessage(message)
+                } catch (e: JSONException) {
+                    e.printStackTrace()
+                    Log.e(tag, e.toString())
+                }
+            }
+        }, MediaConstraints())
+    }
+
+    private fun maybeStart() {
+        Log.d(tag, "maybeStart: $isStarted $isChannelReady")
+        if (!isStarted && isChannelReady) {
+            isStarted = true
+            if (isInitiator) {
+                doCall()
+            }
+        }
+    }
+
+    private fun doCall() {
+        val sdpMediaConstraints = MediaConstraints()
+        sdpMediaConstraints.mandatory.add(
+            MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true")
+        )
+        /*  video from peer */
+        sdpMediaConstraints.mandatory.add(
+            MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true")
+        )
+        peerConnection.createOffer(object : SimpleSdpObserver() {
+            override fun onCreateSuccess(sessionDescription: SessionDescription) {
+                Log.d(tag, "onCreateSuccess: ")
+                peerConnection.setLocalDescription(SimpleSdpObserver(), sessionDescription)
+                val message = JSONObject()
+                try {
+                    message.put("type", "offer")
+                    message.put("room", room)
+                    message.put("sdp", sessionDescription.description)
+                    sendMessage(message)
+                } catch (e: JSONException) {
+                    e.printStackTrace()
+                    Log.e(tag, e.toString())
+                }
+            }
+        }, sdpMediaConstraints)
+    }
+
+    private fun sendMessage(message: Any) {
+        socket.emit("message", message)
+    }
+
+    private fun initializePeerConnectionFactory() {
+        rootEglBase = EglBase.create()
+        val initializationOptions = PeerConnectionFactory.InitializationOptions.builder(
+            applicationContext
+        ).createInitializationOptions()
+        PeerConnectionFactory.initialize(initializationOptions)
+        val options = PeerConnectionFactory.Options()
+        val defaultVideoEncoderFactory = DefaultVideoEncoderFactory(
+            rootEglBase.eglBaseContext, true, true)
+        val defaultVideoDecoderFactory = DefaultVideoDecoderFactory(rootEglBase.eglBaseContext)
+
+        factory = PeerConnectionFactory.builder().setOptions(options)
+            .setVideoEncoderFactory(defaultVideoEncoderFactory)
+            .setVideoDecoderFactory(defaultVideoDecoderFactory)
+            .createPeerConnectionFactory()
+    }
+
+    private fun initializewebrtc(){
+        // Initialize the customVideoCapturer
+        customVideoCapturer = CustomVideoCapturer()
+        customVideoCapturer.init(mCurrentResolution!!.width, mCurrentResolution!!.height)
+        // Initialize factory
+        initializePeerConnectionFactory()
+        // Initialize the video source
+        videoSource = factory.createVideoSource(false)
+        // Initialize the surfaceTextureHelper
+        surfaceTextureHelper = SurfaceTextureHelper.create("VideoCapturerThread", rootEglBase.eglBaseContext)
+        // Initialize the video capturer
+        customVideoCapturer.initialize(surfaceTextureHelper, applicationContext, videoSource.capturerObserver)
+    }
+
+    private fun createVideoTrackFromInsta360() {
+        videoTrackFromCamera360 = factory.createVideoTrack(VIDEO_TRACK_ID, videoSource)
+        videoTrackFromCamera360.setEnabled(true)
+
+        // Create an AudioSource instance
+        audioConstraints = MediaConstraints()
+        audioSource = factory.createAudioSource(audioConstraints)
+        localAudioTrack = factory.createAudioTrack(AUDIO_TRACK_ID, audioSource)
+
+    }
+
+    private fun initializePeerConnections() {
+        peerConnection = createPeerConnection(factory)!!
+    }
+
+    private fun startStreamingVideo() {
+        val mediaStream: MediaStream = factory.createLocalMediaStream("ARDAMS")
+        mediaStream.addTrack(videoTrackFromCamera360) // Assuming videoTrackFromCamera is a MediaStreamTrack
+        mediaStream.addTrack(localAudioTrack) // Assuming localAudioTrack is a MediaStreamTrack
+        peerConnection.addTrack(videoTrackFromCamera360) // Add the video track
+        peerConnection.addTrack(localAudioTrack) // Add the audio track
+
+        val message = JSONObject()
+        try {
+            message.put("type", "got user media")
+            message.put("room", room)
+            Log.d(
+                tag,
+                "startStreamingVideo: sending data $message"
+            )
+            sendMessage(message)
+        } catch (e: JSONException) {
+            e.printStackTrace()
+            Log.e(tag, e.toString())
+        }
+    }
+
+    private fun createPeerConnection(factory: PeerConnectionFactory?): PeerConnection? {
+        val iceServers = mutableListOf<PeerConnection.IceServer>()
+        iceServers.add(PeerConnection.IceServer.builder(urlStunServer).createIceServer())
+        val rtcConfig = PeerConnection.RTCConfiguration(iceServers)
+        val pcConstraints = MediaConstraints()
+        val pcObserver: PeerConnection.Observer =
+            object : PeerConnection.Observer {
+                override fun onSignalingChange(signalingState: PeerConnection.SignalingState) {
+                    Log.d(tag, "onSignalingChange: ")
+                }
+
+                override fun onIceConnectionChange(iceConnectionState: PeerConnection.IceConnectionState) {
+                    Log.d(tag, "onIceConnectionChange: ")
+                }
+
+                override fun onIceConnectionReceivingChange(b: Boolean) {
+                    Log.d(tag, "onIceConnectionReceivingChange: ")
+                }
+
+                override fun onIceGatheringChange(iceGatheringState: PeerConnection.IceGatheringState) {
+                    Log.d(tag, "onIceGatheringChange: ")
+                }
+
+                override fun onIceCandidate(iceCandidate: IceCandidate) {
+                    Log.d(tag, "onIceCandidate: ")
+                    val message = JSONObject()
+                    try {
+                        message.put("type", "candidate")
+                        message.put("room", room)
+                        message.put("label", iceCandidate.sdpMLineIndex)
+                        message.put("id", iceCandidate.sdpMid)
+                        message.put("candidate", iceCandidate.sdp)
+                        Log.d(
+                            tag,
+                            "onIceCandidate: sending candidate $message"
+                        )
+                        sendMessage(message)
+                    } catch (e: JSONException) {
+                        e.printStackTrace()
+                        Log.e(tag, e.toString())
+                    }
+                }
+
+                override fun onIceCandidatesRemoved(iceCandidates: Array<IceCandidate>) {
+                    Log.d(tag, "onIceCandidatesRemoved: ")
+                }
+
+                override fun onAddStream(p0: MediaStream?) {
+                    TODO("Not yet implemented")
+                }
+
+                override fun onTrack(transceiver: RtpTransceiver?) {
+                    super.onTrack(transceiver)
+
+                    if (transceiver != null && transceiver.receiver != null && transceiver.receiver.track() != null) {
+                        val track = transceiver.receiver.track()
+                        if (track is AudioTrack) {
+                            // Handle incoming audio track
+                            handleIncomingAudioTrack(track)
+                        }
+                    }
+                }
+
+                override fun onRemoveStream(mediaStream: MediaStream) {
+                    Log.d(tag, "onRemoveStream: ")
+                }
+
+                override fun onDataChannel(dataChannel: DataChannel) {
+                    Log.d(tag, "onDataChannel: ")
+                }
+
+                override fun onRenegotiationNeeded() {
+                    Log.d(tag, "onRenegotiationNeeded: ")
+                }
+            }
+        return factory!!.createPeerConnection(rtcConfig, pcConstraints, pcObserver)
+    }
+
+    private fun handleIncomingAudioTrack(audioTrack: AudioTrack) {
+        audioTrack.setEnabled(true)
+    }
 }
